@@ -177,7 +177,7 @@ void drawBatInfo(bool needToClear) {
   oled.fastLineH(63, 2, 12);
   oled.dot(3, 48);
   oled.dot(11, 48);
-  if(boxFlags.bmsReadFailed)
+  if (boxFlags.bmsReadFailed)
     oled.drawBitmap2(2, 50, box_batt_fail, 11, 13);
   //TODO else draw blocks
   //batt info
@@ -198,7 +198,7 @@ void drawBatInfo(bool needToClear) {
 
   oled.setCursorXY(29, 48);
   oled.print("%");
-  if(config.showTemperature != 0) {
+  if (config.showTemperature != 0) {
     int8_t t = getBmsTemperature();
     if (t > 0) oled.print(" ");
     oled.print(constrain(t, -99, 99));
@@ -383,6 +383,7 @@ void menuHandleEncoderCommand() {
   } else if (encIsClick()) {
     screenData.goToScreen = (selectedMenuItem < 7) ? selectedMenuItem : 0;
     encResetStates();
+    encPosition = 0;
   }
 }
 
@@ -418,24 +419,32 @@ void _drawBattInfoItem(uint8_t idx) {
       oled.println(bmsData.version);
     }
   } else if (idx == 1) {
+    oled.print(F("CHRG "));
+    if (bitRead(bmsData.statusInfo, 0)) oled.print("ON |");
+    else oled.print("OFF|");
+    oled.print(F("DCRG "));
+    if (bitRead(bmsData.statusInfo, 0)) oled.println("ON ");
+    else oled.println("OFF ");
+    //if (bitRead(lowByte, 2)) Serial.println("Balance ON");
+    //else Serial.println("Balance OFF");
+  } else if (idx == 2) {
+    oled.print(F("Balance "));
+    if (bitRead(bmsData.statusInfo, 2)) {
+      oled.println("active 1A");
+      //TODO display actual balance current
+      //oled.print(constrain(bmsData.totalVoltage / 100, 0, 99));
+      //oled.print(".");
+      //oled.printNumberFmt((uint8_t)(bmsData.totalVoltage % 100), 2);
+      //oled.println(F("A"));
+    } else oled.println("inactive");
+  } else if (idx == 3) {
     oled.print(bmsData.soc);
     oled.print(F("% - "));
     oled.print(constrain(bmsData.totalVoltage / 100, 0, 99));
     oled.print(".");
     oled.printNumberFmt((uint8_t)(bmsData.totalVoltage % 100), 2);
     oled.println(F("V"));
-  } else if (idx >= 2 && idx < 2 + _cellInfoRows) {
-    _printCellInfo(idx - 2);
-    oled.print(" ");
-    if ((idx - 2 + _cellInfoRows) < bmsData.numCells) _printCellInfo(idx - 2 + _cellInfoRows);
-    oled.println();
-  } else if (idx == (2 + _cellInfoRows)) {
-    oled.print(F("Max-Min: "));
-    uint16_t diff = bmsData.cellVoltages[bmsData.maxVoltageCellIndex] - bmsData.cellVoltages[bmsData.minVoltageCellIndex];
-    oled.print(diff / 1000);
-    printMillis(diff % 1000);
-    oled.println();
-  } else if (idx == (3 + _cellInfoRows)) {
+  } else if (idx == 4) {
     if (bmsData.current > 0) {
       oled.print(F("Charge: "));
       oled.print(constrain(bmsData.current / 100, 0, 999));
@@ -451,13 +460,31 @@ void _drawBattInfoItem(uint8_t idx) {
     } else {
       oled.println(F("Zero current"));
     }
-  } else if (idx == (4 + _cellInfoRows)) {
-    oled.println(F("AAAA AAAA AAAA AAA"));
+  } else if (idx >= 5 && idx < (5 + _cellInfoRows)) {
+    _printCellInfo(idx - 5);
+    oled.print(" ");
+    if ((idx - 5 + _cellInfoRows) < bmsData.numCells) _printCellInfo(idx - 5 + _cellInfoRows);
+    oled.println();
   } else if (idx == (5 + _cellInfoRows)) {
-    oled.println(F("BBBB BBBB BBBB BBB"));
+    oled.print(F("Max-Min: "));
+    uint16_t diff = bmsData.cellVoltages[bmsData.maxVoltageCellIndex] - bmsData.cellVoltages[bmsData.minVoltageCellIndex];
+    oled.print(diff / 1000);
+    printMillis(diff % 1000);
+    oled.println();
   } else if (idx == (6 + _cellInfoRows)) {
-    oled.println(F("CCCC CCCC CCCC CCC"));
+    oled.print(constrain(bmsData.temp1, -99, 127));    //3
+    oled.print(F("℃| "));                              //3
+    oled.print(constrain(bmsData.temp2, -99, 127));    //3
+    oled.print(F("℃| M "));                            //5
+    oled.print(constrain(bmsData.mosTemp, -99, 127));  //3
+    oled.println(F("℃"));                              //1
   } else if (idx == (7 + _cellInfoRows)) {
+    oled.print(F("Raw current: "));
+    oled.println(bmsData.rawCurrent);
+  } else if (idx == (8 + _cellInfoRows)) {
+    oled.print(F("Raw alarm: "));
+    oled.println(bmsData.alarmStatus);
+  } else if (idx == (9 + _cellInfoRows)) {
     oled.println(F("DDDD DDDD DDDD DDD"));
   }
 }
@@ -483,7 +510,7 @@ void drawBattInfoScreen() {
   else
     oled.drawBitmap2(0, 57, box_back, 12, 7, true);
 
-  _drawScroll(8 + _cellInfoRows, ITEMS_PER_PAGE + 1, battInfoScreen.getShift());
+  _drawScroll(9 + _cellInfoRows, ITEMS_PER_PAGE + 1, battInfoScreen.getShift());
   boxFlags.battInfoScreenNeedToRedraw = false;
   _battInfoVersion = bmsData.version;
   oled.update();
@@ -536,8 +563,10 @@ void drawOutputInfoScreen() {
   oled.printNumberFmt((uint8_t)(jsyData.freq % 100), 2);
   oled.println("Hz");
   //5
-  oled.print(jsyData.energy);
-  oled.println("Wh");
+  oled.print(jsyData.energyDeka / 100);
+  oled.print(".");
+  oled.printNumberFmt((uint8_t)(jsyData.energyDeka % 100), 2);
+  oled.println("KWh");
   //6
   oled.print(jsyData.co2);
   oled.println("kg");
@@ -659,7 +688,7 @@ void drawNetworkScreen() {
   oled.print(WiFi.getMode());
   oled.print(F(" Status: "));
   oled.println(WiFi.status());
-  if(WiFi.status() == WL_CONNECTED) {
+  if (WiFi.status() == WL_CONNECTED) {
     //4
     oled.print(F("IP: "));
     oled.println(WiFi.localIP());
@@ -673,7 +702,7 @@ void drawNetworkScreen() {
     oled.print((RECONNECT_INTERVAL - constrain(millis() - lastReconnectMillis, 0, RECONNECT_INTERVAL)) / 1000);
     oled.println("s");
   }
-  
+
   oled.drawBitmap2(0, 57, box_back, 12, 7, true);
   boxFlags.networkScreenNeedToRedraw = false;
   oled.update();
@@ -687,6 +716,7 @@ uint32_t _logNow = 0;
 ScrollListScreen logScreen(ITEMS_PER_PAGE + 1, LOG_SIZE);
 
 void _printLogItem(uint8_t idx) {
+  idx = (lastChangeIndex - idx + LOG_SIZE) % LOG_SIZE;
   uint32_t ago = _logNow - modeChangeLogMillis[idx];
   uint8_t d = ago / 86400000;
   ago %= 86400000;
@@ -719,6 +749,7 @@ void drawLogScreen() {
     oled.setCursorXY(0, 13);  //21 29 37 45 53 61
   } else oled.setCursorXY(0, 9);
 
+  _logNow = millis();
   logScreen.draw(_printLogItem);
 
   if (logScreen.canScrollDown())

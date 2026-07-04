@@ -120,25 +120,28 @@ struct BMSDataStruct {
   uint8_t numCells = 0;                          // 0 - BMS_MAX_CELLS
   uint16_t totalVoltage = 0;                     // * 0.01 V
   int16_t current = 0;                           //*0.01 A
+  uint16_t rawCurrent = 0;                       //Unconverted value
   uint8_t soc = 0;
   int8_t mosTemp = 0;
   int8_t temp1 = 0;
   int8_t temp2 = 0;
   uint16_t alarmStatus = 0;
-  uint8_t statusInfo = 0;
+  uint8_t statusInfo = 0; //1-bit CHARGE MOS, 2-bit DISCHARGE MOS, 3=bit BALANCE
   uint16_t cycles = 0;
   uint8_t version = 0;
 } bmsData;
 
 struct JSYDataStruct {
-  uint16_t voltage = 0;  // *0.01 V
-  uint16_t current = 0;  // *0.01 A
-  uint16_t power = 0;    // W
-  uint32_t energy = 0;   // /3200 kWh
-  uint16_t pf = 0;       // *0.001
-  uint32_t co2 = 0;      // *0.01 kg
-  uint16_t temp = 0;     // reserved
-  uint16_t freq = 0;     // *0.01 Hz
+  uint16_t voltage = 0;    // *0.01 V
+  uint16_t current = 0;    // *0.01 A
+  uint16_t power = 0;      // W
+  uint32_t energyRaw = 0;  // /3200 kWh
+  // >>5 == /32
+  uint32_t energyDeka = 0;  // *10 Wh
+  uint16_t pf = 0;          // *0.001
+  uint32_t co2 = 0;         // *0.01 kg
+  uint16_t temp = 0;        // reserved
+  uint16_t freq = 0;        // *0.01 Hz
   uint16_t maxPower = 0;
   uint16_t avgPower = 0;
   uint8_t version = 0;
@@ -159,11 +162,11 @@ struct StatInfoStruct {
   uint16_t sPanelMetering12h[12] = { 0 };  //Wh 0 - 65,535  65kw
   uint8_t sPanelMetering12hIdx = 0;        // 0 - 11, e.g. 8 - last hour, 7 previous hour, etc
   uint32_t sPanelMeteringTotal = 0;        //Wh*10 0 - 4,294,967,295
-  uint32_t gridModeTime = 0; //s time on INV_PREHEAT, TO_GRID,GRID modes
-  uint32_t invModeTime = 0; //s time on TO_INV, INV,INV+ modes
-  uint32_t prevOutputMetering = 0; //Wh
-  uint32_t gridOutputMetering = 0; //wh
-  uint32_t invOutputMetering = 0; //wh
+  uint32_t gridModeTime = 0;               //s time on INV_PREHEAT, TO_GRID,GRID modes
+  uint32_t invModeTime = 0;                //s time on TO_INV, INV,INV+ modes
+  uint32_t prevOutputMetering = 0;         //Wh
+  uint32_t gridOutputMetering = 0;         //wh
+  uint32_t invOutputMetering = 0;          //wh
 
 } statInfo;
 
@@ -199,12 +202,11 @@ int8_t getBmsTemperature() {
     case 4:
       return (int16_t(bmsData.temp1) + int16_t(bmsData.temp2) + int16_t(bmsData.mosTemp)) / 3;
     case 5:
-      return (bmsData.temp1<bmsData.temp2&&bmsData.temp1<bmsData.mosTemp) ? bmsData.temp1 :
-        //bmsData.t1 >= bmsData.t2 || bmsData.t1>=bmsData.mosTemp
-        ((bmsData.temp2<bmsData.mosTemp) ? bmsData.temp2 : bmsData.mosTemp);
+      return (bmsData.temp1 < bmsData.temp2 && bmsData.temp1 < bmsData.mosTemp) ? bmsData.temp1 :
+                                                                                //bmsData.t1 >= bmsData.t2 || bmsData.t1>=bmsData.mosTemp
+               ((bmsData.temp2 < bmsData.mosTemp) ? bmsData.temp2 : bmsData.mosTemp);
     case 6:
-      return (bmsData.temp1>bmsData.temp2&&bmsData.temp1>bmsData.mosTemp) ? bmsData.temp1 :
-        ((bmsData.temp2>bmsData.mosTemp) ? bmsData.temp2 : bmsData.mosTemp);
+      return (bmsData.temp1 > bmsData.temp2 && bmsData.temp1 > bmsData.mosTemp) ? bmsData.temp1 : ((bmsData.temp2 > bmsData.mosTemp) ? bmsData.temp2 : bmsData.mosTemp);
     default:
       return 0;
   }
