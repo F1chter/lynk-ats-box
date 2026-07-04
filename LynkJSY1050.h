@@ -148,13 +148,16 @@ void _parseJsyResponse() {
   Serial.print(jsyData.power);
 
   uint32_t dword = (jsyResponseFrameBuffer[9] << 24) | (jsyResponseFrameBuffer[10] << 16) | (jsyResponseFrameBuffer[11] << 8) | jsyResponseFrameBuffer[12];
-  if (jsyData.energy != dword) {
-    jsyData.energy = dword;
+  if (jsyData.energyRaw != dword) {
+    jsyData.energyRaw = dword;
+    jsyData.energyDeka = dword >>5;
     //boxFlags.outputInfoUpdated = true;
     boxFlags.outputInfoScreenNeedToRedraw = true;
   }
-  Serial.print("W Energy: ");
-  Serial.print(jsyData.energy);
+  Serial.print("W Energy Raw: ");
+  Serial.print(jsyData.energyRaw);
+  Serial.print("/3200KWh Energy *0.01: ");
+  Serial.print(jsyData.energyRaw);
 
   word = (jsyResponseFrameBuffer[13] << 8) | jsyResponseFrameBuffer[14];
   if (jsyData.pf != word) {
@@ -162,7 +165,7 @@ void _parseJsyResponse() {
     //boxFlags.outputInfoUpdated = true;
     boxFlags.outputInfoScreenNeedToRedraw = true;
   }
-  Serial.print("Wh PowerFactor: ");
+  Serial.print("KWh PowerFactor: ");
   Serial.print(jsyData.pf);
 
   jsyData.co2 = (jsyResponseFrameBuffer[15] << 24) | (jsyResponseFrameBuffer[16] << 16) | (jsyResponseFrameBuffer[17] << 8) | jsyResponseFrameBuffer[18];

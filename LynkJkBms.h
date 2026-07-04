@@ -1,8 +1,9 @@
 #define READ_FROM_BMS_INTERVAL 1000
 #define RESPONSE_BUFFER_SIZE 350
-#define bmsSerial Serial2  //Serial0 esp32c3 Serial2 esp32
-#define BMS_RX_PIN 16      //ESP RX -> BMS TX pin GREEN(near VCC on BMS)
-#define BMS_TX_PIN 17      //ESP TX -> BMS RX pin YELLOW(near GND on BMS)
+#define CURRENT_FILTER_SIZE 5  // Must be an odd number (3, 5, 7, etc.)
+#define bmsSerial Serial2      //Serial0 esp32c3 Serial2 esp32
+#define BMS_RX_PIN 16          //ESP RX -> BMS TX pin GREEN(near VCC on BMS)
+#define BMS_TX_PIN 17          //ESP TX -> BMS RX pin YELLOW(near GND on BMS)
 
 // see JK Communication protocol.pdf http://www.jk-bms.com/Upload/2022-05-19/1621104621.pdf
 uint8_t bmsRequestFrame[21] = { 0x4E, 0x57 /*4E 57 = StartOfFrame*/, 0x00, 0x13 /*0x13 | 19 = LengthOfFrame*/, 0x00, 0x00,
@@ -19,7 +20,8 @@ bool _bmsReadInProgress = false;
 uint16_t _bmsResponseIndex = 0;
 uint16_t _bmsExpectedLength = 0;
 uint32_t lastReadFromBmsMillis = 0;
-
+uint8_t _currentHistoryIdx = 0;
+int16_t _currentHistory[CURRENT_FILTER_SIZE];
 
 void bmsRead(uint32_t timeout_ms = 10000L);
 void parseResponse();
@@ -29,6 +31,7 @@ String bmsSimpleStatus();
 void bmsBegin() {
   //pinMode(BMS_TX_PIN, OUTPUT);
   //pinMode(BMS_RX_PIN, INPUT_PULLUP);
+  memset(_currentHistory, 0, CURRENT_FILTER_SIZE);
   bmsSerial.begin(115200, SERIAL_8N1, BMS_RX_PIN, BMS_TX_PIN);
   bmsRead();
   bmsPrintRawResponse();
@@ -46,14 +49,6 @@ void tickBms() {
     if (!boxFlags.bmsReadFailed) parseResponse();
   }
 }
-
-void trackMainBatInfoChanged() {
-  int16_t battCurrent = 0;  // *0.01 A
-  uint8_t soc = 0;
-  uint8_t temp = 0;
-  uint16_t battV = 0;
-}
-
 
 void bmsRead(uint32_t timeout_ms) {
   if (!_bmsReadInProgress) {
@@ -125,27 +120,33 @@ int8_t _bmsConvertTemperature(uint8_t highByte, uint8_t lowByte) {
   return constrain(temp, 0, 127);
 }
 
-#define CURRENT_SPIKE_CANDIDATE_DELTA 500  //5A
-int16_t _previousCurrent = 0;
-bool _isCurrentSpike(int16_t curr) {
-  uint16_t delta = 0;
-  if (curr > bmsData.current) delta = curr - bmsData.current;
-  else delta = bmsData.current - curr;
-  if (delta < CURRENT_SPIKE_CANDIDATE_DELTA) {
-    _previousCurrent = curr;
-    return false;
+void _storeNewCurrentValue(int16_t current) {
+  if (_currentHistoryIdx < CURRENT_FILTER_SIZE - 1) _currentHistoryIdx++;
+  else _currentHistoryIdx = 0;
+  _currentHistory[_currentHistoryIdx] = current;
+}
+
+int16_t _getMedianCurrent() {
+  int16_t sortArray[CURRENT_FILTER_SIZE];
+
+  // Copy elements from circular buffer to a temporary array for sorting
+  for (int8_t i = 0; i < CURRENT_FILTER_SIZE; i++) {
+    sortArray[i] = _currentHistory[i];
   }
 
-  if (curr > _previousCurrent) delta = curr - _previousCurrent;
-  else delta = _previousCurrent - curr;
-
-  if (delta < CURRENT_SPIKE_CANDIDATE_DELTA) {
-    _previousCurrent = curr;
-    return false;
+  // Simple Bubble Sort
+  for (int8_t i = 0; i < CURRENT_FILTER_SIZE - 1; i++) {
+    for (int8_t j = i + 1; j < CURRENT_FILTER_SIZE; j++) {
+      if (sortArray[i] > sortArray[j]) {
+        int16_t temp = sortArray[i];
+        sortArray[i] = sortArray[j];
+        sortArray[j] = temp;
+      }
+    }
   }
 
-  _previousCurrent = curr;
-  return true;
+  // Return the middle element
+  return sortArray[CURRENT_FILTER_SIZE / 2];
 }
 
 
@@ -161,9 +162,9 @@ int16_t _bmsConvertCurrent(uint8_t version, uint16_t rawCurrent) {
     }
   } else {
     if ((rawCurrent & 0x8000) == 0) {
-      return -constrain(rawCurrent, 1, 32768);  // Discharge (negative)
+      return -constrain(rawCurrent, 0, 32768);  // Discharge (negative)
     } else {
-      return constrain((rawCurrent & 0x07FF), 0, 32767);  // Charge(positive)
+      return constrain((rawCurrent & 0x7FFF), 0, 32767);  // Charge(positive)
     }
   }
 }
@@ -215,13 +216,7 @@ void parseResponse() {
           boxFlags.battInfoScreenNeedToRedraw = true;
           bmsData.cellVoltages[cellNo - 1] = voltage;  //*0.001f V
         }
-        //Serial.print("C");
-        //Serial.print(cellNo);
-        //Serial.print("=");
-        //Serial.print(bmsData.cellVoltages[cellNo - 1]);
-        //Serial.print("*0.001V ");
       }
-      //Serial.println("");
       i += cellsInfoBytes + 2;
     } else if (id == 0x80) {                                                                            //Read MOS temperature
       int8_t t = _bmsConvertTemperature(bmsResponseFrameBuffer[i + 1], bmsResponseFrameBuffer[i + 2]);  //Big endian
@@ -259,6 +254,7 @@ void parseResponse() {
       i += 3;
     } else if (id == 0x84) {                                                              //The current data
       rawCurrent = (bmsResponseFrameBuffer[i + 1] << 8) | bmsResponseFrameBuffer[i + 2];  //Big endian
+      bmsData.rawCurrent = rawCurrent;
       i += 3;
     } else if (id == 0x85) {  //SOC
       if (bmsData.soc != bmsResponseFrameBuffer[i + 1]) {
@@ -497,7 +493,9 @@ void parseResponse() {
     }
   }
   int16_t curr = _bmsConvertCurrent(version, rawCurrent);
-  if (bmsData.current != curr && !_isCurrentSpike(curr)) {
+  _storeNewCurrentValue(curr);
+  curr = _getMedianCurrent();
+  if (bmsData.current != curr) {
     bmsData.current = curr;
     boxFlags.battInfoScreenNeedToRedraw = true;
     boxFlags.battInfoUpdated = true;
@@ -592,11 +590,29 @@ String bmsSimpleStatus() {
   } else {
     result += "Zero current\n\r";
   }
+  if (bitRead(bmsData.alarmStatus, 0)) result += "WARNING: Low capacity alarm";
+  if (bitRead(bmsData.alarmStatus, 1)) result += "WARNING: MOS overtemperature alarm";
+  if (bitRead(bmsData.alarmStatus, 2)) result += "WARNING: Charge overvoltage alarm";
+  if (bitRead(bmsData.alarmStatus, 3)) result += "WARNING: Discharge overvoltage alarm";
+  if (bitRead(bmsData.alarmStatus, 4)) result += "WARNING: Temp1 overtemperature alarm";
+  if (bitRead(bmsData.alarmStatus, 5)) result += "WARNING: Charge overcurrent alarm";
+  if (bitRead(bmsData.alarmStatus, 6)) result += "WARNING: Discharge overcurrent alarm";
+  if (bitRead(bmsData.alarmStatus, 7)) result += "WARNING: Differential pressure alarm";
+  if (bitRead(bmsData.alarmStatus, 8)) result += "WARNING: Temp2 overtemperature alarm";
+  if (bitRead(bmsData.alarmStatus, 9)) result += "WARNING: Battery low temperature alarm";
+  if (bitRead(bmsData.alarmStatus, 10)) result += "WARNING: Unit overvoltage alarm";
+  if (bitRead(bmsData.alarmStatus, 11)) result += "WARNING: Unitundervoltage alarm";
+  if (bitRead(bmsData.alarmStatus, 12)) result += "WARNING: 309_A protection";
+  if (bitRead(bmsData.alarmStatus, 13)) result += "WARNING: 309_B protection";
+  if (bitRead(bmsData.alarmStatus, 14)) result += "WARNING: Unknown1(reserved) alarm";
+  if (bitRead(bmsData.alarmStatus, 15)) result += "WARNING: Unknown2(reserved) alarm";
+
+
+
   Serial.print("=========== result.length() ==");
   Serial.println(result.length());
   return result;
 }
-
 
 /*
 

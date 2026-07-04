@@ -13,6 +13,9 @@
 
 /* =========== ENUMS & CONSTANTS ===========*/
 #define INV_PIN 15
+#define SSR_GRID_PIN 13 //YELLOW
+#define SSR_INV_PIN 14 //BLUE
+#define SSR_REL_PIN 27 //GREEN
 #define SAVE_AFTER_LAST_DELAY 30000  //30s
 
 /* =========== VARIABLES ===========*/
@@ -30,6 +33,12 @@ LynkFile configFile(&LittleFS, "/config.cfg", 1, &config, sizeof(config));
 void setup() {
   pinMode(INV_PIN, OUTPUT);
   digitalWrite(INV_PIN, LOW);
+  pinMode(SSR_GRID_PIN, OUTPUT);
+  digitalWrite(SSR_GRID_PIN, LOW);
+  pinMode(SSR_INV_PIN, OUTPUT);
+  digitalWrite(SSR_INV_PIN, LOW);
+  pinMode(SSR_REL_PIN, OUTPUT);
+  digitalWrite(SSR_REL_PIN, LOW);
   ledBegin();
   simpleBlink(1000);
   buzzerBegin();
@@ -90,7 +99,7 @@ void loop() {
   if (taskExecutionIndex == 0) {
     tickSaveConfig();
     taskExecutionIndex++;
-  } 
+  }
   tickEnc();
   handleEncoderCommand();
   tickBoxMode();
@@ -182,7 +191,7 @@ void tickBoxMode() {
   if (mainInfo.boxMode == TO_GRID && millis() - lastModeChangeMillis > 5000L) {
     mainInfo.boxMode = GRID;
     boxFlags.boxModeUpdated = true;
-    //disable to inv ssr
+    digitalWrite(SSR_GRID_PIN, LOW);
     digitalWrite(INV_PIN, LOW);
   } else if (forceChangeMode != 1 && mainInfo.boxMode == GRID && millis() - lastModeChangeMillis > 10000L) {
     if (forceChangeMode == 2 || forceChangeMode == 3 || bmsData.soc >= config.toInvSoc || (bmsData.soc > config.toGridSoc && mainInfo.solarPanelPower >= (((uint16_t)config.toInvSolarPanelPower) * 10))) {
@@ -193,29 +202,36 @@ void tickBoxMode() {
   } else if (mainInfo.boxMode == INV_PREHEAT && millis() - lastModeChangeMillis > 5000L) {
     mainInfo.boxMode = TO_INV;
     boxFlags.boxModeUpdated = true;
-    //enable to inv ssr
+    digitalWrite(SSR_INV_PIN, HIGH);
   } else if (mainInfo.boxMode == TO_INV && millis() - lastModeChangeMillis > 5000L) {
     mainInfo.boxMode = INV;
     boxFlags.boxModeUpdated = true;
-    //disable to inv ssr
-  } else if (forceChangeMode !=2 && mainInfo.boxMode == INV && millis() - lastModeChangeMillis > 10000L) {
+    digitalWrite(SSR_INV_PIN, LOW);
+  } else if (forceChangeMode != 2 && mainInfo.boxMode == INV && millis() - lastModeChangeMillis > 10000L) {
     if (forceChangeMode == 3) {
       mainInfo.boxMode = INV_PLUS;
       boxFlags.boxModeUpdated = true;
-      //enable homeRelaySSR
-    } else if ((forceChangeMode == 1) || (bmsData.soc <= config.toGridSocCritical) || (bmsData.soc <= config.toGridSoc && jsyData.power < (config.outputThreshold * 10))) {
+      digitalWrite(SSR_REL_PIN, HIGH);
+    } else if (forceChangeMode == 1 || bmsData.soc <= config.toGridSocCritical || (bmsData.soc <= config.toGridSoc && jsyData.power < (config.outputThreshold * 10))) {
+      String s = "DEBUG soc = ";
+      s += bmsData.soc;
+      s += " crit = ";
+      s += config.toGridSocCritical;
+      s += " toGridSoc = ";
+      s += config.toGridSoc;
+      sendMessage(s, ADMIN_ID);
       mainInfo.boxMode = TO_GRID;
       boxFlags.boxModeUpdated = true;
-      //enable to grid ssr
+      digitalWrite(SSR_GRID_PIN, HIGH);
     }
   } else if (forceChangeMode != 3 && mainInfo.boxMode == INV_PLUS && millis() - lastModeChangeMillis > 5000L) {
     if (forceChangeMode == 1 || forceChangeMode == 2 || bmsData.soc <= config.toGridSoc) {
       mainInfo.boxMode = INV;
       boxFlags.boxModeUpdated = true;
-      //disable homeRelaySSR
+      digitalWrite(SSR_REL_PIN, LOW);
     }
   } else if (mainInfo.boxMode == UNKNOWN && millis() - lastModeChangeMillis > 5000L) {
-    if ((forceChangeMode == 2 || forceChangeMode == 3 && bmsData.soc > config.toGridSoc) || bmsData.soc >= config.toInvSoc || (bmsData.soc > config.toGridSoc && mainInfo.solarPanelPower >= (((uint16_t)config.toInvSolarPanelPower) * 10))) {
+    if (forceChangeMode == 2 || forceChangeMode == 3 || bmsData.soc >= config.toInvSoc || (bmsData.soc > config.toGridSoc && mainInfo.solarPanelPower >= (((uint16_t)config.toInvSolarPanelPower) * 10))) {
       mainInfo.boxMode = INV_PREHEAT;
       boxFlags.boxModeUpdated = true;
       digitalWrite(INV_PIN, HIGH);
