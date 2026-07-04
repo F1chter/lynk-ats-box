@@ -224,13 +224,13 @@ void tickBoxMode() {
       boxFlags.boxModeUpdated = true;
       digitalWrite(SSR_GRID_PIN, HIGH);
     }
-  } else if (forceChangeMode != 3 && mainInfo.boxMode == INV_PLUS && millis() - lastModeChangeMillis > 5000L) {
+  } else if (forceChangeMode != 3 && mainInfo.boxMode == INV_PLUS) {
     if (forceChangeMode == 1 || forceChangeMode == 2 || bmsData.soc <= config.toGridSoc) {
       mainInfo.boxMode = INV;
       boxFlags.boxModeUpdated = true;
       digitalWrite(SSR_REL_PIN, LOW);
     }
-  } else if (mainInfo.boxMode == UNKNOWN && millis() - lastModeChangeMillis > 5000L) {
+  } else if (mainInfo.boxMode == UNKNOWN) {
     if (forceChangeMode == 2 || forceChangeMode == 3 || bmsData.soc >= config.toInvSoc || (bmsData.soc > config.toGridSoc && mainInfo.solarPanelPower >= (((uint16_t)config.toInvSolarPanelPower) * 10))) {
       mainInfo.boxMode = INV_PREHEAT;
       boxFlags.boxModeUpdated = true;
