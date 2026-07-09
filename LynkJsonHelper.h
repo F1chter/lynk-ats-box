@@ -83,6 +83,14 @@ uint16_t parseJsonInteger(const String& str, int16_t startPos = 0) {
   return startPos;
 }
 
+uint16_t endJsonIntegerPos(const String& str, int16_t startPos = 0) {
+  if (str[startPos] == '-') 
+    startPos++;
+  while (startPos < str.length() && isDigit(str[startPos]))
+    startPos++;
+  return startPos;
+}
+
 //return endPos - position of this array end position + 1
 uint16_t endJsonArrayPos(const String& str, int16_t startPos = 0) {
   bool insideString = false;

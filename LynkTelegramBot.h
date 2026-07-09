@@ -32,8 +32,8 @@ struct TgMessage {
   String fileId;
   String fileName;
   void reserve() {
-    userId.reserve(9);
-    chatId.reserve(9);
+    userId.reserve(16);
+    chatId.reserve(16);
     text.reserve(MESSAGE_BUFFER_SIZE);
     fileId.reserve(71);
     fileName.reserve(32);
@@ -107,8 +107,15 @@ void handleUpdate() {
   Serial.print(tgMessage.fileName);
   Serial.print(" fileId: ");
   Serial.println(tgMessage.fileId);
-  sendMessage(tgMessage.text, tgMessage.chatId);
-  if(tgMessage.userId != ADMIN_ID) return;
+  uint8_t status = sendMessage(tgMessage.text, tgMessage.chatId);
+  if(tgMessage.userId != ADMIN_ID) {
+    String s = "new user:";
+    s+= tgMessage.userId;
+    s+=" status ";
+    s+=status;
+    sendMessage(s, ADMIN_ID);
+    return;
+  }
   if (tgMessage.text == "status" && _statusFunction != nullptr) {
     sendMessage(_statusFunction(), tgMessage.chatId);
   }
@@ -244,8 +251,7 @@ void _addInlineMenuFooter(String& req) {
 uint8_t sendMessage(const String msg, const String chatId, bool withMenu) {
   String req;
   _addToken(req);
-  req += F("/sendMessage?");
-  req += F("&text=");
+  req += F("/sendMessage?text=");
   urlEncode(msg, req);
   if (withMenu) _addMenu(req);
   //if (parseMode == FB_MARKDOWN) s += F("&parse_mode=MarkdownV2");
@@ -324,7 +330,10 @@ uint8_t _parseMessage(const String& str) {
   if (!str.startsWith(F("{\"ok\":true"))) return 3;  // error
   // update_id The update's unique identifier. Update identifiers start from a certain positive number and increase sequentially. If there are no new updates for at least a week, then identifier of the next update will be chosen randomly instead of sequentially.
   int16_t startPos = str.indexOf(F("{\"update_id\":"), 0);
-  if (startPos < 0) return 0;  //no update_id
+  if (startPos < 0) {
+    _updateId = 0; //reset _updateId
+    return 0;  //no update_id
+  }
   startPos += 13;
   //update_id
   if (!isNextJsonInteger(str, startPos)) return 3;  ////no update_id value
@@ -551,8 +560,8 @@ uint8_t _parseFromPart(const String& str, int16_t startPos, int16_t endPos) {
         Serial.println(str.substring(startPos, endPos));
         return 3;
       }
-      startPos = parseJsonInteger(str, startPos);
-      tgMessage.userId += jsonValue.unsignedIntValue;
+      uint16_t endIdPos = endJsonIntegerPos(str, startPos);
+      tgMessage.userId = str.substring(startPos, endIdPos);
       return 1;  //id found, not else needed
     } else {
       Serial.print("Unhandled field: ");
@@ -582,11 +591,10 @@ uint8_t _parseChatPart(const String& str, int16_t startPos, int16_t endPos) {
         Serial.println(str.substring(startPos, endPos));
         return 3;
       }
-      startPos = parseJsonInteger(str, startPos);
-      if (jsonValue.boolValue) tgMessage.chatId = "-";
-      tgMessage.chatId += jsonValue.unsignedIntValue;
+      uint16_t endIdPos = endJsonIntegerPos(str, startPos);
+      tgMessage.chatId = str.substring(startPos, endIdPos);
       return 1;  //id found, not else needed
-    } else {
+     } else {
       Serial.print("Unhandled field: ");
       Serial.println(field);
       startPos = skipJsonValue(str, startPos);

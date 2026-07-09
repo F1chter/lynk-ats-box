@@ -335,12 +335,14 @@ void homeHandleEncoderCommand() {
     Serial.println(encPosition);
   }
   if (encPosition >= ENCODER_TICKS_TO_CHANGE_MODE) {
-    if (forceChangeMode == 2) forceChangeMode = 3;      //TO_INV_PLUS
+    if(forceChangeMode == 0 && mainInfo.boxMode == INV) forceChangeMode = 3; //TO_INV_PLUS
+    else if (forceChangeMode == 2) forceChangeMode = 3;      //TO_INV_PLUS
     else if (forceChangeMode < 2) forceChangeMode = 2;  //TO_INV
     boxFlags.boxModeUpdated = true;
     encPosition = 0;
   } else if (encPosition <= -ENCODER_TICKS_TO_CHANGE_MODE) {
-    if (forceChangeMode == 3) forceChangeMode = 2;       //TO_INV
+    if(forceChangeMode == 0 && mainInfo.boxMode == INV_PLUS) forceChangeMode = 2; //TO_INV
+    else if (forceChangeMode == 3) forceChangeMode = 2;       //TO_INV
     else if (forceChangeMode != 1) forceChangeMode = 1;  //TO_GRID
     boxFlags.boxModeUpdated = true;
     encPosition = 0;

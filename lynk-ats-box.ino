@@ -13,9 +13,9 @@
 
 /* =========== ENUMS & CONSTANTS ===========*/
 #define INV_PIN 15
-#define SSR_GRID_PIN 13 //YELLOW
-#define SSR_INV_PIN 14 //BLUE
-#define SSR_REL_PIN 27 //GREEN
+#define SSR_GRID_PIN 13              //YELLOW
+#define SSR_INV_PIN 14               //BLUE
+#define SSR_REL_PIN 27               //GREEN
 #define SAVE_AFTER_LAST_DELAY 30000  //30s
 
 /* =========== VARIABLES ===========*/
@@ -195,6 +195,7 @@ void tickBoxMode() {
     digitalWrite(INV_PIN, LOW);
   } else if (forceChangeMode != 1 && mainInfo.boxMode == GRID && millis() - lastModeChangeMillis > 10000L) {
     if (forceChangeMode == 2 || forceChangeMode == 3 || bmsData.soc >= config.toInvSoc || (bmsData.soc > config.toGridSoc && mainInfo.solarPanelPower >= (((uint16_t)config.toInvSolarPanelPower) * 10))) {
+      debugSendToAdmin(INV_PREHEAT);
       mainInfo.boxMode = INV_PREHEAT;
       boxFlags.boxModeUpdated = true;
       digitalWrite(INV_PIN, HIGH);
@@ -213,19 +214,14 @@ void tickBoxMode() {
       boxFlags.boxModeUpdated = true;
       digitalWrite(SSR_REL_PIN, HIGH);
     } else if (forceChangeMode == 1 || bmsData.soc <= config.toGridSocCritical || (bmsData.soc <= config.toGridSoc && jsyData.power < (config.outputThreshold * 10))) {
-      String s = "DEBUG soc = ";
-      s += bmsData.soc;
-      s += " crit = ";
-      s += config.toGridSocCritical;
-      s += " toGridSoc = ";
-      s += config.toGridSoc;
-      sendMessage(s, ADMIN_ID);
+      debugSendToAdmin(TO_GRID);
       mainInfo.boxMode = TO_GRID;
       boxFlags.boxModeUpdated = true;
       digitalWrite(SSR_GRID_PIN, HIGH);
     }
   } else if (forceChangeMode != 3 && mainInfo.boxMode == INV_PLUS) {
     if (forceChangeMode == 1 || forceChangeMode == 2 || bmsData.soc <= config.toGridSoc) {
+      debugSendToAdmin(INV);
       mainInfo.boxMode = INV;
       boxFlags.boxModeUpdated = true;
       digitalWrite(SSR_REL_PIN, LOW);
@@ -267,6 +263,22 @@ void printConfig() {
   uint8_t invEfficiency = 90;                 //% 1 - 100 Inverter Energy conversion efficiency, for panel power calculation
   uint8_t ignoreMinorConditionsDuration = 2;  //(2+1)*10=30s 1-256x10 sec, allow force to_grid if soc>to_inv and force to inv to_grid>soc>critical
 } config;*/
+}
+
+void debugSendToAdmin(uint8_t newMode) {
+  String s = "DEBUG from ";
+  s += (uint8_t)mainInfo.boxMode;
+  s += " to ";
+  s += newMode;
+  s += " soc = ";
+  s += bmsData.soc;
+  s += " crit = ";
+  s += config.toGridSocCritical;
+  s += " toGridSoc = ";
+  s += config.toGridSoc;
+  s += " toInvSoc = ";
+  s += config.toInvSoc;
+  sendMessage(s, ADMIN_ID);
 }
 
 void tickSaveConfig() {
