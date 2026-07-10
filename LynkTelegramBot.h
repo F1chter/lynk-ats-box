@@ -683,5 +683,6 @@ void _enableWiFi() {
   WiFi.disconnect(false);  // Reconnect the network
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(HOSTNAME);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  WiFi.begin();
+  //WiFi.begin(WIFI_SSID, WIFI_PASS);
 }

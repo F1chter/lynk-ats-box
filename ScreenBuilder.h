@@ -156,7 +156,7 @@ void drawPanelInfo(bool needToClear) {
   else (printGigaInt6char(statInfo.sPanelMeteringTotal));
   oled.print("Wh");
   oled.setCursorXY(7, 26);
-  oled.print(mainInfo.solarPanelPower);
+  oled.print(solarPanelPower);
   oled.print("W");
 
   //arrow from panel to bat
@@ -221,33 +221,33 @@ void _drawInvToBoxArrow();
 void _clearBatToBox();
 
 void drawBoxMode(bool needToClear) {
-  if (mainInfo.boxMode == UNKNOWN) {
+  if (boxMode == UNKNOWN) {
     if (needToClear) oled.clear(81, 33, 110, 40);
     oled.setCursorXY(81, 33);
     oled.print("????");
-  } else if (mainInfo.boxMode == TO_GRID) {
+  } else if (boxMode == TO_GRID) {
     if (needToClear) oled.clear(81, 33, 110, 40);
     //oled.setCursorXY(81, 33);
     //oled.print("GRID");
     _drawGridToBoxArrow();
     if (needToClear) _clearBatToBox();
-  } else if (mainInfo.boxMode == GRID) {
+  } else if (boxMode == GRID) {
     oled.setCursorXY(81, 33);
     //if (!needToClear)
     oled.print("GRID");
     _drawGridToBoxArrow();
-  } else if (mainInfo.boxMode == INV_PREHEAT) {
+  } else if (boxMode == INV_PREHEAT) {
     oled.setCursorXY(81, 33);
     if (!needToClear) oled.print("GRID");
     _drawBatToInv();
-  } else if (mainInfo.boxMode == TO_INV) {
+  } else if (boxMode == TO_INV) {
     if (needToClear) oled.clear(81, 33, 110, 40);
     oled.setCursorXY(81, 33);
     //oled.print("INV");
     if (!needToClear) _drawBatToInv();
     _drawInvToBoxArrow();
     if (needToClear) _clearGridToBoxArrow();
-  } else if (mainInfo.boxMode == INV) {
+  } else if (boxMode == INV) {
     if (needToClear) oled.clear(81, 33, 110, 40);
     oled.setCursorXY(81, 33);
     oled.print("INV");
@@ -256,7 +256,7 @@ void drawBoxMode(bool needToClear) {
       _drawInvToBoxArrow();
     }
     if (needToClear) _clearBoxToHomeArrow();
-  } else if (mainInfo.boxMode == INV_PLUS) {
+  } else if (boxMode == INV_PLUS) {
     oled.setCursorXY(81, 33);
     oled.print("INV+");
     if (!needToClear) {
@@ -335,15 +335,15 @@ void homeHandleEncoderCommand() {
     Serial.println(encPosition);
   }
   if (encPosition >= ENCODER_TICKS_TO_CHANGE_MODE) {
-    if(forceChangeMode == 0 && mainInfo.boxMode == INV) forceChangeMode = 3; //TO_INV_PLUS
-    else if (forceChangeMode == 2) forceChangeMode = 3;      //TO_INV_PLUS
-    else if (forceChangeMode < 2) forceChangeMode = 2;  //TO_INV
+    if (forceChangeMode == 0 && boxMode == INV) forceChangeMode = 3;  //TO_INV_PLUS
+    else if (forceChangeMode == 2) forceChangeMode = 3;                        //TO_INV_PLUS
+    else if (forceChangeMode < 2) forceChangeMode = 2;                         //TO_INV
     boxFlags.boxModeUpdated = true;
     encPosition = 0;
   } else if (encPosition <= -ENCODER_TICKS_TO_CHANGE_MODE) {
-    if(forceChangeMode == 0 && mainInfo.boxMode == INV_PLUS) forceChangeMode = 2; //TO_INV
-    else if (forceChangeMode == 3) forceChangeMode = 2;       //TO_INV
-    else if (forceChangeMode != 1) forceChangeMode = 1;  //TO_GRID
+    if (forceChangeMode == 0 && boxMode == INV_PLUS) forceChangeMode = 2;  //TO_INV
+    else if (forceChangeMode == 3) forceChangeMode = 2;                             //TO_INV
+    else if (forceChangeMode != 1) forceChangeMode = 1;                             //TO_GRID
     boxFlags.boxModeUpdated = true;
     encPosition = 0;
   }
@@ -400,7 +400,7 @@ uint8_t _battInfoVersion = 0;
 void _recalculateBattInfoRowsAndMaxShift() {
   if (boxFlags.bmsReadFailed && bmsData.version == 0) return;
   _cellInfoRows = (bmsData.numCells + 1) / 2;
-  battInfoScreen.setItemCount(8 + _cellInfoRows);
+  battInfoScreen.setItemCount(9 + _cellInfoRows);
 }
 
 void _printCellInfo(uint8_t cellNo) {
@@ -434,10 +434,6 @@ void _drawBattInfoItem(uint8_t idx) {
     if (bitRead(bmsData.statusInfo, 2)) {
       oled.println("active 1A");
       //TODO display actual balance current
-      //oled.print(constrain(bmsData.totalVoltage / 100, 0, 99));
-      //oled.print(".");
-      //oled.printNumberFmt((uint8_t)(bmsData.totalVoltage % 100), 2);
-      //oled.println(F("A"));
     } else oled.println("inactive");
   } else if (idx == 3) {
     oled.print(bmsData.soc);
@@ -888,7 +884,7 @@ const SettingsItemDef SETTINGS_DEFS[] = {
   { F("Show bat temp"), &config.showTemperature, 3, minFixed0, maxFixed6, fmtBatTemp },                     // 8
   { F("InverterIdle"), &config.invIdle, 5, minFixed0, maxFixed255, fmtWatt },                               // 9
   { F("InvEfficienc"), &config.invEfficiency, 5, minFixed0, maxFixed100, fmtPct },                          // 10
-  { F("Force Time"), &config.ignoreMinorConditionsDuration, 5, minFixed0, maxFixed255, fmtTime },           // 11
+  { F("Force Time"), &config.ignoreConditionsDuration, 5, minFixed0, maxFixed255, fmtTime },                // 11
 };
 
 String _getSettingsValue(uint8_t itemIdx, bool isSelectedEdit) {

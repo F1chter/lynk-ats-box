@@ -22,7 +22,6 @@ static constexpr uint16_t CRCTable[] = {
 };
 
 //const char* hostname = "esp32-node-temperature";
-#define HOSTNAME "ESP32-ATS-BOX"
 #define BMS_MAX_CELLS 8
 #define N10K 10000
 #define N100K 100000
@@ -50,14 +49,8 @@ enum BoxMode {
 
 const char* boxModeStrings4c[] = { "????", "2GRI", "GRID", "INVH", "2INV", "INV ", "INV+" };
 
-enum TgCommand {
-  TG_NO_COMMAND,
-  TG_GET_STATUS,
-  TG_CHANGE_MODE
-};
-
 /*=========== Flash config ===========*/
-//TO_INV_PANEL_POW, TO_INV_SOC, TO_GRID_SOC, CRITICAL_TO_GRID_SOC, OUTPUT_THRESHOLD, GO_TO_SLEEP_SOC, WAKE_UP_SOC
+uint8_t configStructVersion = 1;  // v1 - version of config struct, not values
 struct ConfigStruct {
   uint8_t toInvSolarPanelPower = 10;          //0-255 x 10 watts
   uint8_t toInvSoc = 90;                      //% >toGridSoc
@@ -70,7 +63,7 @@ struct ConfigStruct {
   uint8_t showTemperature = 1;                //"No", "t1", "t2", "MOS", "Avg", "Min", "Max"
   uint8_t invIdle = 5;                        //w 0-255 Inverter Idle Consumption, for panel power calculation
   uint8_t invEfficiency = 90;                 //% 1 - 100 Inverter Energy conversion efficiency, for panel power calculation
-  uint8_t ignoreMinorConditionsDuration = 2;  //(2+1)*10=30s 1-256x10 sec, allow force to_grid if soc>to_inv and force to inv to_grid>soc>critical
+  uint8_t ignoreConditionsDuration = 2;  //(2+1)*10=30s 1-256x10 sec, force change mode duration, all rules is ignored during this period
 } config;
 
 /* =========== VARIABLES ===========*/
@@ -105,13 +98,8 @@ struct BoxFlagsStruct {
                false, false, false, false,
                true, true };
 
-struct MainInformationStruct {
-
-  uint16_t solarPanelPower = 0;
-
-  BoxMode boxMode = UNKNOWN;
-
-} mainInfo;
+uint16_t solarPanelPower = 0;
+BoxMode boxMode = UNKNOWN;
 
 struct BMSDataStruct {
   uint16_t cellVoltages[BMS_MAX_CELLS] = { 0 };  // * 0.001 V
@@ -126,7 +114,7 @@ struct BMSDataStruct {
   int8_t temp1 = 0;
   int8_t temp2 = 0;
   uint16_t alarmStatus = 0;
-  uint8_t statusInfo = 0; //1-bit CHARGE MOS, 2-bit DISCHARGE MOS, 3=bit BALANCE
+  uint8_t statusInfo = 0;  //1-bit CHARGE MOS, 2-bit DISCHARGE MOS, 3=bit BALANCE
   uint16_t cycles = 0;
   uint8_t version = 0;
 } bmsData;
@@ -147,12 +135,9 @@ struct JSYDataStruct {
   uint8_t version = 0;
 } jsyData;
 
-TgCommand tgCommand = TG_NO_COMMAND;
-
 struct ScreenDataStruct {
   uint8_t screen = 0;
   uint8_t goToScreen = 0;
-
 } screenData;
 
 struct StatInfoStruct {

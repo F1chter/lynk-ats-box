@@ -24,7 +24,6 @@ uint32_t lastDisplayUpdateMillis = 0;
 
 void setupScreen() {
   oled.begin(I2C_SDA, I2C_SCL);
-  delay(1000);
   lastDisplayUpdateMillis = millis();
 }
 

@@ -1,7 +1,8 @@
 /* =========== IMPORTS ===========*/
 #include "global.h"
-#include <LittleFS.h>
-#include "LynkFile.h"
+//#include <LittleFS.h>
+//#include "LynkFile.h"
+#include "LynkNVS.h"
 #include "LynkJkBms.h"
 #include "LynkLED.h"
 #include "LynkBuzzer.h"
@@ -27,7 +28,7 @@ uint8_t taskExecutionIndex = 0;  //avoid execution heavy tasks inside one loop
 uint32_t lastModeChangeMillis;
 uint32_t lastEmulateMeterMillis;
 
-LynkFile configFile(&LittleFS, "/config.cfg", 1, &config, sizeof(config));
+//LynkFile configFile(&LittleFS, "/config.cfg", 1, &config, sizeof(config));
 /* =========== SETUP ===========*/
 
 void setup() {
@@ -44,20 +45,20 @@ void setup() {
   buzzerBegin();
   encBegin();
 
-  Serial.begin(115200);
+  //Serial.begin(115200);
 
   setupScreen();
   //simpleMelody();
-  delay(3000);
-  Serial.println("=========== SETUP STARTED===========");
+  //delay(3000);
+  //Serial.println("=========== SETUP STARTED===========");
 
-  Serial.println("=========== DEFAULT VALUES==========");
-  printConfig();  // print default values
-  LittleFS.begin(true);
-  FileStatus fileStatus = configFile.init();
-  Serial.println("=========== VALUES FROM FLASH==========");
-  printConfig();  // print values from flash
-
+  //Serial.println("=========== DEFAULT VALUES==========");
+  //printConfig();  // print default values
+  //LittleFS.begin(true);
+  //FileStatus fileStatus = configFile.init();
+  //Serial.println("=========== VALUES FROM FLASH==========");
+  //printConfig();  // print values from flash
+  nvsBegin();
 
   bmsBegin();
   jsyBegin();
@@ -115,31 +116,31 @@ void calculatePanelPower() {
   if (!boxFlags.battInfoUpdated && !boxFlags.outputInfoUpdated) return;
   int32_t battPower = ((int32_t)bmsData.current) * ((int32_t)bmsData.totalVoltage);
   battPower /= 10000;
-  if (mainInfo.boxMode == INV_PREHEAT || mainInfo.boxMode == TO_INV || mainInfo.boxMode == INV || mainInfo.boxMode == INV_PLUS) battPower += config.invIdle;
-  if (mainInfo.boxMode == TO_INV || mainInfo.boxMode == INV || mainInfo.boxMode == INV_PLUS) {
+  if (boxMode == INV_PREHEAT || boxMode == TO_INV || boxMode == INV || boxMode == INV_PLUS) battPower += config.invIdle;
+  if (boxMode == TO_INV || boxMode == INV || boxMode == INV_PLUS) {
     int32_t outputPower = (int32_t)jsyData.power;
     outputPower *= 100;
     outputPower /= config.invEfficiency;
     if (outputPower + battPower > 0) {
-      mainInfo.solarPanelPower = outputPower + battPower;
+      solarPanelPower = outputPower + battPower;
       boxFlags.solarPanelInfoUpdated = true;
-    } else if (mainInfo.solarPanelPower != 0) {
-      mainInfo.solarPanelPower = 0;
+    } else if (solarPanelPower != 0) {
+      solarPanelPower = 0;
       boxFlags.solarPanelInfoUpdated = true;
     }
 
   } else if (battPower > 0) {
-    mainInfo.solarPanelPower = battPower;
+    solarPanelPower = battPower;
     boxFlags.solarPanelInfoUpdated = true;
-  } else if (mainInfo.solarPanelPower != 0) {
-    mainInfo.solarPanelPower = 0;
+  } else if (solarPanelPower != 0) {
+    solarPanelPower = 0;
     boxFlags.solarPanelInfoUpdated = true;
   }
 }
 
 void tickPanelMeter() {
   if (millis() - lastPanelCounterMillis < 1000L) return;
-  statInfo.sPanelCounterValue += mainInfo.solarPanelPower;
+  statInfo.sPanelCounterValue += solarPanelPower;
   if (statInfo.sPanelLastSecCounter < 60) {
     statInfo.sPanelLastSecCounter++;
   } else {
@@ -188,47 +189,47 @@ void emulateMeter() {
 
 //0-NO_FORCE, 1-TO_GRID, 2-TO_INV, 3-TO_INV_PLUS
 void tickBoxMode() {
-  if (mainInfo.boxMode == TO_GRID && millis() - lastModeChangeMillis > 5000L) {
-    mainInfo.boxMode = GRID;
+  if (boxMode == TO_GRID && millis() - lastModeChangeMillis > 5000L) {
+    boxMode = GRID;
     boxFlags.boxModeUpdated = true;
     digitalWrite(SSR_GRID_PIN, LOW);
     digitalWrite(INV_PIN, LOW);
-  } else if (forceChangeMode != 1 && mainInfo.boxMode == GRID && millis() - lastModeChangeMillis > 10000L) {
-    if (forceChangeMode == 2 || forceChangeMode == 3 || bmsData.soc >= config.toInvSoc || (bmsData.soc > config.toGridSoc && mainInfo.solarPanelPower >= (((uint16_t)config.toInvSolarPanelPower) * 10))) {
+  } else if (forceChangeMode != 1 && boxMode == GRID && millis() - lastModeChangeMillis > 10000L) {
+    if (forceChangeMode == 2 || forceChangeMode == 3 || bmsData.soc >= config.toInvSoc || (bmsData.soc > config.toGridSoc && solarPanelPower >= (((uint16_t)config.toInvSolarPanelPower) * 10))) {
       debugSendToAdmin(INV_PREHEAT);
-      mainInfo.boxMode = INV_PREHEAT;
+      boxMode = INV_PREHEAT;
       boxFlags.boxModeUpdated = true;
       digitalWrite(INV_PIN, HIGH);
     }
-  } else if (mainInfo.boxMode == INV_PREHEAT && millis() - lastModeChangeMillis > 5000L) {
-    mainInfo.boxMode = TO_INV;
+  } else if (boxMode == INV_PREHEAT && millis() - lastModeChangeMillis > 5000L) {
+    boxMode = TO_INV;
     boxFlags.boxModeUpdated = true;
     digitalWrite(SSR_INV_PIN, HIGH);
-  } else if (mainInfo.boxMode == TO_INV && millis() - lastModeChangeMillis > 5000L) {
-    mainInfo.boxMode = INV;
+  } else if (boxMode == TO_INV && millis() - lastModeChangeMillis > 5000L) {
+    boxMode = INV;
     boxFlags.boxModeUpdated = true;
     digitalWrite(SSR_INV_PIN, LOW);
-  } else if (forceChangeMode != 2 && mainInfo.boxMode == INV && millis() - lastModeChangeMillis > 10000L) {
+  } else if (forceChangeMode != 2 && boxMode == INV && millis() - lastModeChangeMillis > 10000L) {
     if (forceChangeMode == 3) {
-      mainInfo.boxMode = INV_PLUS;
+      boxMode = INV_PLUS;
       boxFlags.boxModeUpdated = true;
       digitalWrite(SSR_REL_PIN, HIGH);
     } else if (forceChangeMode == 1 || bmsData.soc <= config.toGridSocCritical || (bmsData.soc <= config.toGridSoc && jsyData.power < (config.outputThreshold * 10))) {
       debugSendToAdmin(TO_GRID);
-      mainInfo.boxMode = TO_GRID;
+      boxMode = TO_GRID;
       boxFlags.boxModeUpdated = true;
       digitalWrite(SSR_GRID_PIN, HIGH);
     }
-  } else if (forceChangeMode != 3 && mainInfo.boxMode == INV_PLUS) {
+  } else if (forceChangeMode != 3 && boxMode == INV_PLUS) {
     if (forceChangeMode == 1 || forceChangeMode == 2 || bmsData.soc <= config.toGridSoc) {
       debugSendToAdmin(INV);
-      mainInfo.boxMode = INV;
+      boxMode = INV;
       boxFlags.boxModeUpdated = true;
       digitalWrite(SSR_REL_PIN, LOW);
     }
-  } else if (mainInfo.boxMode == UNKNOWN) {
-    if (forceChangeMode == 2 || forceChangeMode == 3 || bmsData.soc >= config.toInvSoc || (bmsData.soc > config.toGridSoc && mainInfo.solarPanelPower >= (((uint16_t)config.toInvSolarPanelPower) * 10))) {
-      mainInfo.boxMode = INV_PREHEAT;
+  } else if (boxMode == UNKNOWN) {
+    if (forceChangeMode == 2 || forceChangeMode == 3 || bmsData.soc >= config.toInvSoc || (bmsData.soc > config.toGridSoc && solarPanelPower >= (((uint16_t)config.toInvSolarPanelPower) * 10))) {
+      boxMode = INV_PREHEAT;
       boxFlags.boxModeUpdated = true;
       digitalWrite(INV_PIN, HIGH);
     }
@@ -239,35 +240,17 @@ void tickBoxMode() {
     if (lastChangeIndex < LOG_SIZE - 1) lastChangeIndex++;
     else lastChangeIndex = 0;
     modeChangeLogMillis[lastChangeIndex] = lastModeChangeMillis;
-    modeChangeLogMode[lastChangeIndex] = mainInfo.boxMode;
+    modeChangeLogMode[lastChangeIndex] = boxMode;
     boxFlags.logScreenNeedToRedraw = true;
-  } else if (forceChangeMode != 0 && (millis() - lastModeChangeMillis) > (((uint32_t)config.ignoreMinorConditionsDuration) + 1) * 10000) {
+  } else if (forceChangeMode != 0 && (millis() - lastModeChangeMillis) > (((uint32_t)config.ignoreConditionsDuration) + 1) * 10000) {
     forceChangeMode = 0;
     boxFlags.boxModeUpdated = true;
   }
 }
 
-void printConfig() {
-  /*
-  struct ConfigStruct {
-  uint8_t toInvPanelPower = 10;               //0-255 x 10 watts
-  uint8_t toInvSoc = 90;                      //% >toGridSoc
-  uint8_t toGridSoc = 20;                     //% >wakeUpSoc && >toGridSocCritical && <toInvSoc
-  uint8_t toGridSocCritical = 10;             //% <toGridSoc && >goToSleepSoc
-  uint8_t outputThreshold = 10;               //0-255 x 10 watts
-  uint8_t goToSleepSoc = 5;                   //% <wakeUp && <toGridSocCritical
-  uint8_t wakeUpSoc = 15;                     //% >goToSleepSoc && <toGridSoc
-  uint8_t needToSendHelloAfterReconnect = 1;  //send Hello to Telegram Bot after WIFI reconnect
-  uint8_t showTemperature = 1;                //0 - no, 1 - avg, 2 - min, 3- max
-  uint8_t invIdle = 5;                        //w 0-255 Inverter Idle Consumption, for panel power calculation
-  uint8_t invEfficiency = 90;                 //% 1 - 100 Inverter Energy conversion efficiency, for panel power calculation
-  uint8_t ignoreMinorConditionsDuration = 2;  //(2+1)*10=30s 1-256x10 sec, allow force to_grid if soc>to_inv and force to inv to_grid>soc>critical
-} config;*/
-}
-
 void debugSendToAdmin(uint8_t newMode) {
   String s = "DEBUG from ";
-  s += (uint8_t)mainInfo.boxMode;
+  s += (uint8_t)boxMode;
   s += " to ";
   s += newMode;
   s += " soc = ";
@@ -284,20 +267,21 @@ void debugSendToAdmin(uint8_t newMode) {
 void tickSaveConfig() {
   if (!boxFlags.isNeedToSaveConfig) return;
   if (millis() - lastConfigChangesMillis < SAVE_AFTER_LAST_DELAY) return;
-  configFile.commit();
+  saveConfigNVS();
+  //configFile.commit();
   setFlagToRedrawCurrentScreen();
   boxFlags.isNeedToSaveConfig = false;
 }
 
 /*
 void emulateChargeDischarge() {
-  if (mainInfo.boxMode == UNKNOWN || mainInfo.boxMode == TO_GRID || mainInfo.boxMode == GRID || mainInfo.boxMode == INV_PREHEAT) {
+  if (boxMode == UNKNOWN || boxMode == TO_GRID || boxMode == GRID || boxMode == INV_PREHEAT) {
     if (bmsData.soc < 100) {
       bmsData.soc++;
       boxFlags.battInfoUpdated = true;
     }
   } else if (bmsData.soc > 0) {
-    bmsData.soc -= mainInfo.boxMode == INV_PLUS ? 2 : 1;
+    bmsData.soc -= boxMode == INV_PLUS ? 2 : 1;
     boxFlags.battInfoUpdated = true;
   }
 }
