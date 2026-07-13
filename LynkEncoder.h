@@ -71,8 +71,7 @@ void encBegin() {
 /* =====================================================================*/
 
 void tickEnc() {
-  uint32_t thisMls = millis();
-  uint32_t debounceDelta = thisMls - debounce_timer;
+  uint32_t debounceDelta = now - debounce_timer;
 
 
   if (!extTick) SW_state = digitalRead(ENCODER_KEY) ^ ENC_BUTTON_INV;  // читаем состояние кнопки SW
@@ -81,7 +80,7 @@ void tickEnc() {
   if (SW_state && !encFlags.butt_flag && (debounceDelta > ENC_DEBOUNCE_BUTTON)) {
     encFlags.butt_flag = true;
     encFlags.turn_flag = false;
-    debounce_timer = thisMls;
+    debounce_timer = now;
     debounceDelta = 0;
     encFlags.isPress_f = true;
     encFlags.isHolded_f = true;
@@ -94,7 +93,7 @@ void tickEnc() {
     }
     if (debounceDelta > ENC_HOLD_TIMEOUT) encFlags.isReleaseHold_f = true;
     encFlags.butt_flag = false;
-    debounce_timer = thisMls;
+    debounce_timer = now;
     debounceDelta = 0;
     encFlags.hold_flag = false;
 
@@ -119,7 +118,7 @@ void tickEnc() {
     } else {
       encFlags.butt_flag = false;
       encFlags.hold_flag = false;
-      debounce_timer = thisMls;
+      debounce_timer = now;
       debounceDelta = 0;
     }
   }
@@ -165,17 +164,17 @@ void tickEnc() {
     if (encState != 0) {
       encFlags.isTurn_f = true;
       if (encState <= 2 && encFlags.dir_flag) encState = 3 - encState;
-      if (!SW_state && thisMls - fast_timer < ENC_FAST_TIMEOUT) {
+      if (!SW_state && now - fast_timer < ENC_FAST_TIMEOUT) {
         if (encState == 1) encFlags.isFastL_f = true;
         else if (encState == 2) encFlags.isFastR_f = true;
-        fast_timer = thisMls;
-      } else fast_timer = thisMls;
+        fast_timer = now;
+      } else fast_timer = now;
 
       if (SW_state) encState += 2;
     }
     prevState = curState;
     encFlags.turn_flag = true;
-    debounce_timer = thisMls;
+    debounce_timer = now;
     debounceDelta = 0;
   }
 }

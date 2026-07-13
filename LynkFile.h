@@ -15,15 +15,17 @@ enum FileStatus {
   F_ERROR,    //FS value not initialized or nothing to write
 };
 
+template<typename T>
 class LynkFile {
 public:
-  LynkFile(fs::FS* nfs = nullptr, const char* path = nullptr, uint8_t version = 1, void* data = nullptr, size_t size = 0) {
-    _fs = nfs;
-    _path = path;
-    _version = version;
-    _data = data;
-    _size = size;
-  }
+  LynkFile(fs::FS* nfs = nullptr, const char* path = nullptr, uint8_t version = 1, T* data = nullptr, size_t size = 0)
+    : _fs(nfs),
+      _path(path),
+      _version(version),
+      _data(data),
+      _size(sizeof(T)) {
+
+      }
 
   FileStatus init() {
     if (!_fs || !_data) return F_ERROR;
@@ -37,6 +39,7 @@ public:
       return _writeData();
     }
     file.read((uint8_t*)_data, _size);
+    file.close();
     return F_READ;
   }
 
@@ -56,7 +59,7 @@ public:
     return F_NO_DIFF;
   }
 
-  uint8_t getVersion() {
+  uint8_t getVersion() const {
     return _version;
   }
 
@@ -64,7 +67,7 @@ private:
   fs::FS* _fs;
   const char* _path;
   uint8_t _version;
-  void* _data;
+  T* _data;
   size_t _size;
 
   FileStatus _writeData() {

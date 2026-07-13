@@ -18,16 +18,16 @@
 #define SSR_INV_PIN 14               //BLUE
 #define SSR_REL_PIN 27               //GREEN
 #define SAVE_AFTER_LAST_DELAY 30000  //30s
+#define LOW_VOLTAGE 19000 //190v
+#define PREHEAT_TIME 5000 //5s
+#define DELAY_BETWEEN_MODE_CHANGE 5000 //5s, to avoid dribling
+
+
+
 
 /* =========== VARIABLES ===========*/
-uint32_t lastPanelCounterMillis;
-
 
 uint8_t taskExecutionIndex = 0;  //avoid execution heavy tasks inside one loop
-
-uint32_t lastModeChangeMillis;
-uint32_t lastEmulateMeterMillis;
-
 //LynkFile configFile(&LittleFS, "/config.cfg", 1, &config, sizeof(config));
 /* =========== SETUP ===========*/
 
@@ -40,11 +40,13 @@ void setup() {
   digitalWrite(SSR_INV_PIN, LOW);
   pinMode(SSR_REL_PIN, OUTPUT);
   digitalWrite(SSR_REL_PIN, LOW);
+
+  now = millis();
+
   ledBegin();
   simpleBlink(1000);
   buzzerBegin();
   encBegin();
-
   //Serial.begin(115200);
 
   setupScreen();
@@ -65,15 +67,15 @@ void setup() {
 
   drawHomeScreen();
   telegramBegin();
-  attachStatusFunction(bmsSimpleStatus);
-  lastPanelCounterMillis = millis();
-  lastModeChangeMillis = millis();
-  lastEmulateMeterMillis = millis();
-  lastConfigChangesMillis = millis();
+  attachStatusFunction(getCurrentBoxStatus);
+  
+  lastStatMillis = now;
+  lastModeChangeMillis = now;
+  lastConfigChangesMillis = now;
 }
 /* =========== LOOP ===========*/
 void loop() {
-
+  now = millis();
   boxFlags.wifiStatusUpdated = false;
   boxFlags.solarPanelInfoUpdated = false;
   boxFlags.boxModeUpdated = false;
@@ -91,7 +93,7 @@ void loop() {
     taskExecutionIndex++;
   }
   calculatePanelPower();
-  tickPanelMeter();
+  tickStat();
   if (taskExecutionIndex == 1) {
     tickTelegram();
     taskExecutionIndex++;
@@ -105,8 +107,6 @@ void loop() {
   handleEncoderCommand();
   tickBoxMode();
   tickScreen();
-
-
 
   delay(1);
 }
@@ -122,48 +122,53 @@ void calculatePanelPower() {
     outputPower *= 100;
     outputPower /= config.invEfficiency;
     if (outputPower + battPower > 0) {
-      solarPanelPower = outputPower + battPower;
-      boxFlags.solarPanelInfoUpdated = true;
-    } else if (solarPanelPower != 0) {
-      solarPanelPower = 0;
-      boxFlags.solarPanelInfoUpdated = true;
-    }
-
+      setSolarPower(outputPower + battPower);
+    } else setSolarPower(0);
   } else if (battPower > 0) {
-    solarPanelPower = battPower;
-    boxFlags.solarPanelInfoUpdated = true;
-  } else if (solarPanelPower != 0) {
-    solarPanelPower = 0;
-    boxFlags.solarPanelInfoUpdated = true;
-  }
+    setSolarPower(battPower);
+  } else setSolarPower(0);
 }
 
-void tickPanelMeter() {
-  if (millis() - lastPanelCounterMillis < 1000L) return;
+void tickStat() {
+  //Solar panel stat calculation
+  if (now - lastStatMillis < 1000L) return;
   statInfo.sPanelCounterValue += solarPanelPower;
   if (statInfo.sPanelLastSecCounter < 60) {
     statInfo.sPanelLastSecCounter++;
   } else {
-    statInfo.sPanelMetering12h[statInfo.sPanelMetering12hIdx] += (statInfo.sPanelCounterValue / 3600);  //Ws to Wh
-    statInfo.sPanelCounterValue = 0;
+    statInfo.sPanelMetering12h[statInfo.sPanelMetering12hIdx] = (statInfo.sPanelCounterValue / 3600);  //Ws to Wh
+    //statInfo.sPanelCounterValue = 0;
     statInfo.sPanelLastSecCounter = 0;
     statInfo.sPanelLastMinCounter++;
     boxFlags.solarPanelInfoUpdated = true;
   }
   if (statInfo.sPanelLastMinCounter >= 60) {
     statInfo.sPanelMeteringTotal += statInfo.sPanelMetering12h[statInfo.sPanelMetering12hIdx] / 10;
+    //TODO store mod? For now 10w is not important
     if (statInfo.sPanelMetering12hIdx < 11) statInfo.sPanelMetering12hIdx++;
     else statInfo.sPanelMetering12hIdx = 0;
     statInfo.sPanelMetering12h[statInfo.sPanelMetering12hIdx] = 0;
+    saveStatNVS();
   }
-  lastPanelCounterMillis = millis();
+  //Mode time
+  if (boxMode == TO_INV || boxMode == INV || boxMode == INV_PLUS) {
+    statInfo.invModeTime += (now - lastStatMillis) / 1000;
+    if (jsyData.voltage < LOW_VOLTAGE)  
+      statInfo.failTime += (now - lastStatMillis) / 1000;
+  } else {
+    statInfo.gridModeTime += (now - lastStatMillis) / 1000;
+    if (jsyData.voltage < LOW_VOLTAGE) 
+      statInfo.warnTime += (now - lastStatMillis) / 1000;
+  }
+  lastStatMillis = now;
 }
+
 
 
 /*
 bool emulateMeterGrow = true;
 void emulateMeter() {
-  if (millis() - lastEmulateMeterMillis < 10000L) return;
+  if (now - lastEmulateMeterMillis < 10000L) return;
   Serial.println("=========== emulateMeter STARTED===========");
   if (emulateMeterGrow) {
     mainInfo.outputPower += 10;
@@ -182,34 +187,34 @@ void emulateMeter() {
   if (mainInfo.panelMeteringTotal > N1B) mainInfo.panelMeteringTotal = 1;
   boxFlags.solarPanelInfoUpdated = true;
 
-  lastEmulateMeterMillis = millis();
+  lastEmulateMeterMillis = now;
 }
 */
 
 
 //0-NO_FORCE, 1-TO_GRID, 2-TO_INV, 3-TO_INV_PLUS
 void tickBoxMode() {
-  if (boxMode == TO_GRID && millis() - lastModeChangeMillis > 5000L) {
+  if (boxMode == TO_GRID && now - lastModeChangeMillis > DELAY_BETWEEN_MODE_CHANGE) {
     boxMode = GRID;
     boxFlags.boxModeUpdated = true;
     digitalWrite(SSR_GRID_PIN, LOW);
     digitalWrite(INV_PIN, LOW);
-  } else if (forceChangeMode != 1 && boxMode == GRID && millis() - lastModeChangeMillis > 10000L) {
+  } else if (forceChangeMode != 1 && boxMode == GRID && now - lastModeChangeMillis > DELAY_BETWEEN_MODE_CHANGE) {
     if (forceChangeMode == 2 || forceChangeMode == 3 || bmsData.soc >= config.toInvSoc || (bmsData.soc > config.toGridSoc && solarPanelPower >= (((uint16_t)config.toInvSolarPanelPower) * 10))) {
       debugSendToAdmin(INV_PREHEAT);
       boxMode = INV_PREHEAT;
       boxFlags.boxModeUpdated = true;
       digitalWrite(INV_PIN, HIGH);
     }
-  } else if (boxMode == INV_PREHEAT && millis() - lastModeChangeMillis > 5000L) {
+  } else if (boxMode == INV_PREHEAT && now - lastModeChangeMillis > PREHEAT_TIME) {
     boxMode = TO_INV;
     boxFlags.boxModeUpdated = true;
     digitalWrite(SSR_INV_PIN, HIGH);
-  } else if (boxMode == TO_INV && millis() - lastModeChangeMillis > 5000L) {
+  } else if (boxMode == TO_INV && now - lastModeChangeMillis > DELAY_BETWEEN_MODE_CHANGE) {
     boxMode = INV;
     boxFlags.boxModeUpdated = true;
     digitalWrite(SSR_INV_PIN, LOW);
-  } else if (forceChangeMode != 2 && boxMode == INV && millis() - lastModeChangeMillis > 10000L) {
+  } else if (forceChangeMode != 2 && boxMode == INV && now - lastModeChangeMillis > DELAY_BETWEEN_MODE_CHANGE) {
     if (forceChangeMode == 3) {
       boxMode = INV_PLUS;
       boxFlags.boxModeUpdated = true;
@@ -236,13 +241,10 @@ void tickBoxMode() {
   }
 
   if (boxFlags.boxModeUpdated) {
-    lastModeChangeMillis = millis();
-    if (lastChangeIndex < LOG_SIZE - 1) lastChangeIndex++;
-    else lastChangeIndex = 0;
-    modeChangeLogMillis[lastChangeIndex] = lastModeChangeMillis;
-    modeChangeLogMode[lastChangeIndex] = boxMode;
+    lastModeChangeMillis = now;
+    logModeChange();
     boxFlags.logScreenNeedToRedraw = true;
-  } else if (forceChangeMode != 0 && (millis() - lastModeChangeMillis) > (((uint32_t)config.ignoreConditionsDuration) + 1) * 10000) {
+  } else if (forceChangeMode != 0 && (now - lastModeChangeMillis) > (((uint32_t)config.ignoreConditionsDuration) + 1) * 10000) {
     forceChangeMode = 0;
     boxFlags.boxModeUpdated = true;
   }
@@ -266,7 +268,7 @@ void debugSendToAdmin(uint8_t newMode) {
 
 void tickSaveConfig() {
   if (!boxFlags.isNeedToSaveConfig) return;
-  if (millis() - lastConfigChangesMillis < SAVE_AFTER_LAST_DELAY) return;
+  if (now - lastConfigChangesMillis < SAVE_AFTER_LAST_DELAY) return;
   saveConfigNVS();
   //configFile.commit();
   setFlagToRedrawCurrentScreen();

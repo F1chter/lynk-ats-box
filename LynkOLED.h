@@ -310,10 +310,10 @@ public:
     if (_charGroup == 0x86 && data == 0x92) return 0xCF;                  //→
     if (_charGroup == 0x94 && data == 0x8B) return 0xCF;                  //🔋
     if (_charGroup == 0xAA && data == 0xAB) return 0xCF;                  //🪫
-    Serial.print("WARNING: UNKNOWN CHAR ");
-    Serial.print(_charGroup, HEX);
-    Serial.print(" ");
-    Serial.println(data, HEX);
+    //Serial.print("WARNING: UNKNOWN CHAR ");
+    //Serial.print(_charGroup, HEX);
+    //Serial.print(" ");
+    //Serial.println(data, HEX);
     return 0x7F;  //?
   }
 
@@ -393,7 +393,7 @@ public:
 
   //n==0 print as is , n==2,fillChar='0'  1 -> 01, n==3,fillChar='_' 1 -> __1
   void printNumberFmt(uint8_t number, uint8_t n = 0, char fillChar = '0') {
-    if(n > 3) n = 3;
+    if (n > 3) n = 3;
     if (n != 0)
       for (uint8_t i = 1, pow = 10; i < n; i++, pow *= 10)
         if (number < pow)
@@ -403,7 +403,7 @@ public:
   }
 
   void printNumberFmt(uint16_t number, uint8_t n = 0, char fillChar = '0') {
-    if(n > 5) n = 5;
+    if (n > 5) n = 5;
     uint16_t pow = 10;
     if (n != 0)
       for (uint8_t i = 1; i < n; i++) {
@@ -456,8 +456,6 @@ public:
   }
 
   void line(int x0, int y0, int x1, int y1, byte fill = 1) {
-    _x = 0;
-    _y = 0;
     if (x0 == x1) fastLineV(x0, y0, y1, fill);
     else if (y0 == y1) fastLineH(y0, x0, x1, fill);
     else {
@@ -484,8 +482,6 @@ public:
   }
 
   void fastLineH(int y, int x0, int x1, byte fill = 1) {
-    _x = 0;
-    _y = 0;
     if (x0 > x1) _swap(x0, x1);
     if (y < 0 || y > _maxY) return;
     if (x0 == x1) {
@@ -500,8 +496,6 @@ public:
 
 
   void fastLineV(int x, int y0, int y1, byte fill = 1) {
-    _x = 0;
-    _y = 0;
     if (y0 > y1) _swap(y0, y1);
     if (x < 0 || x > _maxX) return;
     if (y0 == y1) {
@@ -513,8 +507,6 @@ public:
   }
 
   void rect(int x0, int y0, int x1, int y1, FillType fillType = FILL) {
-    _x = 0;
-    _y = 0;
     if (x0 > x1) _swap(x0, x1);
     if (y0 > y1) _swap(y0, y1);
     if (fillType == STROKE) {
@@ -537,29 +529,85 @@ public:
       return;
     }
 
-    _x = constrain(x0, 0, _maxX);
+    x0 = constrain(x0, 0, _maxX);
     x1 = constrain(x1, 0, _maxX);
     y0 = constrain(y0, 0, _maxY);
     y1 = constrain(y1, 0, _maxY);
     y1++;
-    const uint8_t height = y1 - y0;
-    for (; _x <= x1; _x++) {
+    const uint8_t h = y1 - y0;
+    _x = x0;
+    while (_x <= x1) {
       _y = y0;
-      _shift = y0 & 0b111;
-      //Serial.println(((height + _shift) >= 8) ? "header" : "height");
-      if ((height + _shift) >= 8) {
+      _shift = _y & 0b111;  // %8
+      if ((h + _shift) > 8) {
         writeData2((fillType == FILL) ? 0xFF : 0, (8 - _shift));  //write 11111111 , will shifted inside write, or 00000000 if fillType!=FILL
-        _y = y0 + (8 - _shift);
+        _y = _y + (8 - _shift);
         _shift = 0;
-        for (; _y < y1; _y += 8) {
+
+        while (_y < y1) {
+          //for (; _y < y1; _y += 8) {
           //Serial.println((y1 - _y >= 8) ? "full" : "footer");
-          if (y1 - _y >= 8)
+          if (y1 - _y < 8)
+            writeData2((fillType == FILL) ? ((1 << (y1 - _y)) - 1) : 0, y1 - _y);  // write e.g 00000111 if y1-y0==3 or 00000000 if fillType!=FILL
+          else
             writeData2((fillType == FILL) ? 0xFF : 0);  //write 11111111 or 00000000 if fillType!=FILL
-          else {
-            writeData2((fillType == FILL) ? ((1 << (y1 - _y)) - 1) : 0, y1 - _y);  // write e.g 00000111 if y1-_y==3 or 00000000 if fillType!=FILL
-          }
+          _y += 8;
         }
-      } else writeData2((fillType == FILL) ? (((1 << height) - 1) << (8 - height)) : 0, height);  // write e.g 11111000 if height==5 or 00000000 if fillType!=FILL
+      } else writeData2((fillType == FILL) ? (((1 << h) - 1) << (8 - h)) : 0, h);  // write e.g 11111000 if height==5 or 00000000 if fillType!=FILL
+      _x++;
+    }
+  }
+
+  void rect2(int x0, int y0, int x1, int y1, bool fill) {
+    if (x0 > x1) _swap(x0, x1);
+    if (y0 > y1) _swap(y0, y1);
+    if (!fill) {
+      fastLineH(y0, x0 + 1, x1 - 1);
+      fastLineH(y1, x0 + 1, x1 - 1);
+      fastLineV(x0, y0, y1);
+      fastLineV(x1, y0, y1);
+      return;
+    }
+
+    if (x0 == x1 && y0 == y1) {
+      dot(x0, y0);
+      return;
+    }
+    if (x0 == x1) {
+      fastLineV(x0, y0, y1);
+      return;
+    }
+    if (y0 == y1) {
+      fastLineH(y0, x0, x1);
+      return;
+    }
+
+    x0 = constrain(x0, 0, _maxX);
+    x1 = constrain(x1, 0, _maxX);
+    y0 = constrain(y0, 0, _maxY);
+    y1 = constrain(y1, 0, _maxY);
+    y1++;
+    const uint8_t h = y1 - y0;
+    _x = x0;
+    while (_x <= x1) {
+      _y = y0;
+      _shift = _y & 0b111;  // %8
+      if ((h + _shift) > 8) {
+        writeData2(0xFF, (8 - _shift));  //write 11111111 , will shifted inside write
+        _y = _y + (8 - _shift);
+        _shift = 0;
+
+        while (_y < y1) {
+          //for (; _y < y1; _y += 8) {
+          //Serial.println((y1 - _y >= 8) ? "full" : "footer");
+          if (y1 - _y < 8)
+            writeData2(((1 << (y1 - _y)) - 1), y1 - _y);  // write e.g 00000111 if y1-y0==3 
+          else
+            writeData2(0xFF);  //write 11111111 
+          _y += 8;
+        }
+      } else writeData2(((1 << h) - 1) , h);  // write e.g 00011111 if height==5, shift inside writeData2
+      _x++;
     }
   }
 

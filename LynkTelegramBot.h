@@ -3,12 +3,17 @@
 #include <HTTPUpdate.h>
 #include <WiFiClientSecure.h>
 #include <StreamString.h>
-#include "LynkJsonHelper.h"
+//#include "LynkJsonHelper.h"
 
-#define HOSTNAME "ESP32-ATS-BOX" 
-#define TG_POLL_INTERVAL 10000     //10s
+#define HOSTNAME "ESP32-ATS-BOX"
+#define TG_POLL_INTERVAL 10000    //10s
 #define RECONNECT_INTERVAL 30000  //30s
 #define MESSAGE_BUFFER_SIZE 32
+
+struct JsonValue {
+  uint32_t unsignedIntValue = 0;
+  bool boolValue = false;  //isNegative for int value
+} jsonValue;
 
 bool needToSendHello = true;
 //bool isWifiConnected = false;
@@ -61,8 +66,8 @@ void telegramBegin() {
   _otaInitiatorId.reserve(9);
   _enableWiFi();
   needToSendHello = true;
-  lastReconnectMillis = millis();
-  lastTgPollMillis = millis();
+  lastReconnectMillis = now;
+  lastTgPollMillis = now;
 }
 
 void tickTelegram() {
@@ -70,33 +75,34 @@ void tickTelegram() {
   if (wifi != boxFlags.isWifiConnected) {
     boxFlags.isWifiConnected = wifi;
     if (wifi) {
-      Serial.print("WIFI Connected, MAC:");
-      Serial.println(WiFi.macAddress());
+      //Serial.print("WIFI Connected, MAC:");
+      //Serial.println(WiFi.macAddress());
       needToSendHello = needToSendHello || config.needToSendHelloAfterReconnect;
     } else {
-      Serial.println("WIFI Disconnected, disable Wifi...");
+      //Serial.println("WIFI Disconnected, disable Wifi...");
       _disableWiFi();
-      lastReconnectMillis = millis();
+      lastReconnectMillis = now;
     }
   }
   if (wifi && needToSendHello) {
     needToSendHello = false;
     sendMessage("Controller Connected🔗(v1.0)\n🫳Force change to:", ADMIN_ID, true);
-    Serial.println("Send hello...");
+    //Serial.println("Send hello...");
   }
   if (wifi) {
-    if (millis() - lastTgPollMillis < TG_POLL_INTERVAL) return;
+    if (now - lastTgPollMillis < TG_POLL_INTERVAL) return;
     tickManual();
-    lastTgPollMillis = millis();
-  } else if (millis() - lastReconnectMillis > RECONNECT_INTERVAL) {
-    Serial.println(boxFlags.isWifiDisabled ? "Try to reconnect, enable wifi..." : "Reconnect failed, disable wifi...");
+    lastTgPollMillis = now;
+  } else if (now - lastReconnectMillis > RECONNECT_INTERVAL) {
+    //Serial.println(boxFlags.isWifiDisabled ? "Try to reconnect, enable wifi..." : "Reconnect failed, disable wifi...");
     if (boxFlags.isWifiDisabled) _enableWiFi();
     else _disableWiFi();
-    lastReconnectMillis = millis();
+    lastReconnectMillis = now;
   }
 }
 
 void handleUpdate() {
+  /*
   Serial.print("New message from:");
   Serial.print(tgMessage.userId);
   Serial.print(" chat: ");
@@ -106,18 +112,22 @@ void handleUpdate() {
   Serial.print(" fileName: ");
   Serial.print(tgMessage.fileName);
   Serial.print(" fileId: ");
-  Serial.println(tgMessage.fileId);
-  uint8_t status = sendMessage(tgMessage.text, tgMessage.chatId);
-  if(tgMessage.userId != ADMIN_ID) {
+  Serial.println(tgMessage.fileId);*/
+  //uint8_t status = sendMessage(tgMessage.text, tgMessage.chatId);
+  if (tgMessage.userId != ADMIN_ID) {
     String s = "new user:";
-    s+= tgMessage.userId;
-    s+=" status ";
-    s+=status;
+    s += tgMessage.userId;
+    //s+=" status ";
+    //s+=status;
     sendMessage(s, ADMIN_ID);
     return;
   }
   if (tgMessage.text == "status" && _statusFunction != nullptr) {
     sendMessage(_statusFunction(), tgMessage.chatId);
+  } else if (tgMessage.text == "resetstat1234") {
+    boxFlags.isNeedToResetJsy = true;
+    boxFlags.isNeedToResetStatInNVS = true;
+    sendMessage("Reset stat OK", tgMessage.chatId);
   }
   if (tgMessage.fileName.endsWith(F(".bin"))) {
     _otaState = 1;
@@ -179,10 +189,10 @@ uint8_t tickManual() {
   tgMessage.clear();
   uint8_t status = _getUpdates();
   if (status == 1) handleUpdate();
-  else if (status != 0) {
-    Serial.print("Error: ");
-    Serial.println(status);
-  }
+  //else if (status != 0) {
+  //  Serial.print("Error: ");
+  //  Serial.println(status);
+  //}
   return status;
 }
 
@@ -258,8 +268,8 @@ uint8_t sendMessage(const String msg, const String chatId, bool withMenu) {
   //else if (parseMode == FB_HTML) s += F("&parse_mode=HTML");
   //if (!notif) req += F("&disable_notification=true");
   _addChatId(req, chatId);
-  Serial.print("send message: ");
-  Serial.println(req);
+  //Serial.print("send message: ");
+  //Serial.println(req);
   uint8_t status = _sendRequest(req);
   if (status != 4) _http->end();
   return status;
@@ -271,7 +281,7 @@ uint8_t _sendRequest(String& req) {
   if (!_http->begin(req)) return 4;
   int answ = _http->GET();
   if (answ == -1 && _http) {  // ESP32 Workaround retry
-    Serial.println("get returns -1, retry connect...");
+    //Serial.println("get returns -1, retry connect...");
     _http->end();
     delete _http;
     _http = new HTTPClient;
@@ -283,8 +293,8 @@ uint8_t _sendRequest(String& req) {
     //parseRequest(_http->getString());
   } else {
     status = 3;
-    Serial.print("HTTP Client return:");
-    Serial.println(answ);
+    //Serial.print("HTTP Client return:");
+    //Serial.println(answ);
   }
   //_http->end();
   return status;
@@ -321,26 +331,40 @@ uint8_t _getUpdates() {
   return status;
 }
 
+bool isNextJsonString(const String& str, int16_t startPos = 0);
+bool isNextJsonBool(const String& str, int16_t startPos = 0);
+bool isNextJsonInteger(const String& str, int16_t startPos = 0);
+bool isNextJsonArray(const String& str, int16_t startPos = 0);
+bool isNextJsonNode(const String& str, int16_t startPos = 0);
+uint16_t skipJsonValue(const String& str, int16_t startPos = 0, char alsoSkip = ' ');
+uint16_t skipSymbolsJson(const String& str, int16_t startPos = 0, char alsoSkip = ' ');
+uint16_t endJsonNodePos(const String& str, int16_t startPos = 0);
+uint16_t endJsonArrayPos(const String& str, int16_t startPos = 0);
+uint16_t endJsonIntegerPos(const String& str, int16_t startPos = 0);
+uint16_t parseJsonInteger(const String& str, int16_t startPos = 0);
+uint16_t parseJsonBool(const String& str, String& out, int16_t startPos = 0);
+uint16_t parseJsonString(const String& str, String& out, int16_t startPos = 0);
+uint16_t endJsonStringPos(const String& str, int16_t startPos = 0);
 uint8_t _parseOrdinaryMessage(const String&, int16_t);
 uint8_t _parseCallbackQuery(const String&, int16_t);
 
 uint8_t _parseMessage(const String& str) {
-  Serial.print("raw message: ");
-  Serial.println(str);
+  //Serial.print("raw message: ");
+  //Serial.println(str);
   if (!str.startsWith(F("{\"ok\":true"))) return 3;  // error
   // update_id The update's unique identifier. Update identifiers start from a certain positive number and increase sequentially. If there are no new updates for at least a week, then identifier of the next update will be chosen randomly instead of sequentially.
   int16_t startPos = str.indexOf(F("{\"update_id\":"), 0);
   if (startPos < 0) {
-    _updateId = 0; //reset _updateId
-    return 0;  //no update_id
+    _updateId = 0;  //reset _updateId
+    return 0;       //no update_id
   }
   startPos += 13;
   //update_id
   if (!isNextJsonInteger(str, startPos)) return 3;  ////no update_id value
   startPos = parseJsonInteger(str, startPos);
   _updateId = jsonValue.unsignedIntValue + 1;  //will used in next read as offset
-  Serial.print("new offset: ");
-  Serial.println(_updateId);
+  //Serial.print("new offset: ");
+  //Serial.println(_updateId);
   //message type
   startPos = skipSymbolsJson(str, startPos, ',');
   if (!isNextJsonString(str, startPos)) return 3;  //no message type
@@ -359,8 +383,8 @@ uint8_t _parseMessage(const String& str) {
 }
 
 uint8_t _parseGetFileResponse(const String& str) {
-  Serial.print("raw message: ");
-  Serial.println(str);
+  //Serial.print("raw message: ");
+  //Serial.println(str);
   if (!str.startsWith(F("{\"ok\":true,"))) return 3;  // error
   int16_t startPos = str.indexOf(F("\"result\":"), 0);
   if (startPos < 0) return 3;  //no result
@@ -370,8 +394,8 @@ uint8_t _parseGetFileResponse(const String& str) {
   startPos = skipSymbolsJson(str, startPos, '{');
   while (startPos < endPos) {
     if (!isNextJsonString(str, startPos)) {
-      Serial.print("can't parse next node: ");
-      Serial.println(str.substring(startPos));
+      //Serial.print("can't parse next node: ");
+      //Serial.println(str.substring(startPos));
       return 3;
     }
     String field;
@@ -379,14 +403,14 @@ uint8_t _parseGetFileResponse(const String& str) {
     startPos = skipSymbolsJson(str, startPos, ':');
     if (field == "file_path") {
       if (!isNextJsonString(str, startPos)) {
-        Serial.print("can't parse field value ");
-        Serial.println(str.substring(startPos));
+        //Serial.print("can't parse field value ");
+        //Serial.println(str.substring(startPos));
         return 3;
       }
       String p;
       startPos = parseJsonString(str, p, startPos);
-      Serial.print("File path: https://api.telegram.org/file/bot*******/");
-      Serial.println(p);
+      //Serial.print("File path: https://api.telegram.org/file/bot*******/");
+      //Serial.println(p);
       if (p.length() != 0) {
         String fullPath;
         fullPath = F("https://api.telegram.org/file/bot");
@@ -398,8 +422,8 @@ uint8_t _parseGetFileResponse(const String& str) {
         return 1;
       } else return 3;
     } else {
-      Serial.print("Unhandled field: ");
-      Serial.println(field);
+      //Serial.print("Unhandled field: ");
+      //Serial.println(field);
       startPos = skipJsonValue(str, startPos);
     }
     startPos = skipSymbolsJson(str, startPos, ',');
@@ -416,12 +440,12 @@ uint8_t _parseOrdinaryMessage(const String& str, int16_t startPos) {
   if (!isNextJsonNode(str, startPos)) return 3;  //no message value
   int16_t endPos = endJsonNodePos(str, startPos) - 1;
   startPos = skipSymbolsJson(str, startPos, '{');
-  Serial.print("ordinary message: ");
-  Serial.println(str.substring(startPos, endPos));
+  //Serial.print("ordinary message: ");
+  //Serial.println(str.substring(startPos, endPos));
   while (startPos < endPos) {
     if (!isNextJsonString(str, startPos)) {
-      Serial.print("can't parse next node: ");
-      Serial.println(str.substring(startPos));
+      //Serial.print("can't parse next node: ");
+      //Serial.println(str.substring(startPos));
       return 3;
     }
     String field;
@@ -447,14 +471,14 @@ uint8_t _parseOrdinaryMessage(const String& str, int16_t startPos) {
       startPos = endDocumentPos;
     } else if (field == "text") {
       if (!isNextJsonString(str, startPos)) {
-        Serial.print("can't parse field value ");
-        Serial.println(str.substring(startPos));
+        //Serial.print("can't parse field value ");
+        //Serial.println(str.substring(startPos));
         return 3;
       }
       startPos = parseJsonString(str, tgMessage.text, startPos);
     } else {
-      Serial.print("Unhandled field: ");
-      Serial.println(field);
+      //Serial.print("Unhandled field: ");
+      //Serial.println(field);
       startPos = skipJsonValue(str, startPos);
     }
     startPos = skipSymbolsJson(str, startPos, ',');
@@ -468,12 +492,12 @@ uint8_t extrachChatInfoFromOrdinaryMessage(const String& str, int16_t startPos, 
   if (!isNextJsonNode(str, startPos)) return 3;  //no message value
   endPos--;
   startPos = skipSymbolsJson(str, startPos, '{');
-  Serial.print("ordinary message: ");
-  Serial.println(str.substring(startPos, endPos));
+  //Serial.print("ordinary message: ");
+  //Serial.println(str.substring(startPos, endPos));
   while (startPos < endPos) {
     if (!isNextJsonString(str, startPos)) {
-      Serial.print("can't parse next node: ");
-      Serial.println(str.substring(startPos));
+      //Serial.print("can't parse next node: ");
+      //Serial.println(str.substring(startPos));
       return 3;
     }
     String field;
@@ -487,8 +511,8 @@ uint8_t extrachChatInfoFromOrdinaryMessage(const String& str, int16_t startPos, 
       return 1;
       startPos = endChatPos;
     } else {
-      Serial.print("Unhandled field: ");
-      Serial.println(field);
+      //Serial.print("Unhandled field: ");
+      //Serial.println(field);
       startPos = skipJsonValue(str, startPos);
     }
     startPos = skipSymbolsJson(str, startPos, ',');
@@ -505,8 +529,8 @@ uint8_t _parseCallbackQuery(const String& str, int16_t startPos) {
   Serial.println(str.substring(startPos, endPos));
   while (startPos < endPos) {
     if (!isNextJsonString(str, startPos)) {
-      Serial.print("can't parse next node: ");
-      Serial.println(str.substring(startPos));
+      //Serial.print("can't parse next node: ");
+      //Serial.println(str.substring(startPos));
       return 3;
     }
     String field;
@@ -526,14 +550,14 @@ uint8_t _parseCallbackQuery(const String& str, int16_t startPos) {
       startPos = endMessagePos;
     } else if (field == "data") {
       if (!isNextJsonString(str, startPos)) {
-        Serial.print("can't parse field value ");
-        Serial.println(str.substring(startPos));
+        //Serial.print("can't parse field value ");
+        //Serial.println(str.substring(startPos));
         return 3;
       }
       startPos = parseJsonString(str, tgMessage.text, startPos);
     } else {
-      Serial.print("Unhandled field: ");
-      Serial.println(field);
+      //Serial.print("Unhandled field: ");
+      //Serial.println(field);
       startPos = skipJsonValue(str, startPos);
     }
     startPos = skipSymbolsJson(str, startPos, ',');
@@ -547,8 +571,8 @@ uint8_t _parseFromPart(const String& str, int16_t startPos, int16_t endPos) {
   endPos--;
   while (startPos < endPos) {
     if (!isNextJsonString(str, startPos)) {
-      Serial.print("can't parse next node: ");
-      Serial.println(str.substring(startPos, endPos));
+      //Serial.print("can't parse next node: ");
+      //Serial.println(str.substring(startPos, endPos));
       return 3;
     }
     String field;
@@ -556,16 +580,16 @@ uint8_t _parseFromPart(const String& str, int16_t startPos, int16_t endPos) {
     startPos = skipSymbolsJson(str, startPos, ':');
     if (field == "id") {
       if (!isNextJsonInteger(str, startPos)) {
-        Serial.print("can't parse id: ");
-        Serial.println(str.substring(startPos, endPos));
+        //Serial.print("can't parse id: ");
+        //Serial.println(str.substring(startPos, endPos));
         return 3;
       }
       uint16_t endIdPos = endJsonIntegerPos(str, startPos);
       tgMessage.userId = str.substring(startPos, endIdPos);
       return 1;  //id found, not else needed
     } else {
-      Serial.print("Unhandled field: ");
-      Serial.println(field);
+      //Serial.print("Unhandled field: ");
+      //Serial.println(field);
       startPos = skipJsonValue(str, startPos);
     }
     startPos = skipSymbolsJson(str, startPos, ',');
@@ -578,8 +602,8 @@ uint8_t _parseChatPart(const String& str, int16_t startPos, int16_t endPos) {
   endPos--;
   while (startPos < endPos) {
     if (!isNextJsonString(str, startPos)) {
-      Serial.print("can't parse next node: ");
-      Serial.println(str.substring(startPos, endPos));
+      //Serial.print("can't parse next node: ");
+      //Serial.println(str.substring(startPos, endPos));
       return 3;
     }
     String field;
@@ -587,16 +611,16 @@ uint8_t _parseChatPart(const String& str, int16_t startPos, int16_t endPos) {
     startPos = skipSymbolsJson(str, startPos, ':');
     if (field == "id") {
       if (!isNextJsonInteger(str, startPos)) {
-        Serial.print("can't  parse id: ");
-        Serial.println(str.substring(startPos, endPos));
+        //Serial.print("can't  parse id: ");
+        //Serial.println(str.substring(startPos, endPos));
         return 3;
       }
       uint16_t endIdPos = endJsonIntegerPos(str, startPos);
       tgMessage.chatId = str.substring(startPos, endIdPos);
       return 1;  //id found, not else needed
-     } else {
-      Serial.print("Unhandled field: ");
-      Serial.println(field);
+    } else {
+      //Serial.print("Unhandled field: ");
+      //Serial.println(field);
       startPos = skipJsonValue(str, startPos);
     }
     startPos = skipSymbolsJson(str, startPos, ',');
@@ -610,8 +634,8 @@ uint8_t _parseDocumentPart(const String& str, int16_t startPos, int16_t endPos) 
   endPos--;
   while (startPos < endPos) {
     if (!isNextJsonString(str, startPos)) {
-      Serial.print("can't parse next node: ");
-      Serial.println(str.substring(startPos, endPos));
+      //Serial.print("can't parse next node: ");
+      //Serial.println(str.substring(startPos, endPos));
       return 3;
     }
     String field;
@@ -619,21 +643,21 @@ uint8_t _parseDocumentPart(const String& str, int16_t startPos, int16_t endPos) 
     startPos = skipSymbolsJson(str, startPos, ':');
     if (field == "file_name") {
       if (!isNextJsonString(str, startPos)) {
-        Serial.print("can't parse file_name value: ");
-        Serial.println(str.substring(startPos, endPos));
+        //Serial.print("can't parse file_name value: ");
+        //Serial.println(str.substring(startPos, endPos));
         return 3;
       }
       startPos = parseJsonString(str, tgMessage.fileName, startPos);
     } else if (field == "file_id") {
       if (!isNextJsonString(str, startPos)) {
-        Serial.print("can't parse file_id value: ");
-        Serial.println(str.substring(startPos, endPos));
+        //Serial.print("can't parse file_id value: ");
+        //Serial.println(str.substring(startPos, endPos));
         return 3;
       }
       startPos = parseJsonString(str, tgMessage.fileId, startPos);
     } else {
-      Serial.print("Unhandled field: ");
-      Serial.println(field);
+      //Serial.print("Unhandled field: ");
+      //Serial.println(field);
       startPos = skipJsonValue(str, startPos);
     }
     startPos = skipSymbolsJson(str, startPos, ',');
@@ -642,8 +666,8 @@ uint8_t _parseDocumentPart(const String& str, int16_t startPos, int16_t endPos) 
 }
 
 void _sendErrorUpdateOtaCode(int errorCode) {
-  Serial.print("UPDATE EROOR: ");
-  Serial.println(errorCode);
+  //Serial.print("UPDATE ERROR: ");
+  //Serial.println(errorCode);
   _otaErrorCode = errorCode;
 }
 
@@ -685,4 +709,165 @@ void _enableWiFi() {
   WiFi.setHostname(HOSTNAME);
   WiFi.begin();
   //WiFi.begin(WIFI_SSID, WIFI_PASS);
+}
+
+/* RESPONSE JSON PARSE HELPER FUNCTIONS*/
+
+//start from "
+bool isNextJsonString(const String& str, int16_t startPos) {
+  if (startPos < 0 || startPos >= str.length()) return false;
+  //Serial.println((int)str[startPos]);
+  return str[startPos] == '"';
+}
+
+//start with t or f
+bool isNextJsonBool(const String& str, int16_t startPos) {
+  if (startPos < 0 || startPos >= str.length()) return false;
+  return str[startPos] == 't' || str[startPos] == 'f';
+}
+
+//start with - or digit
+bool isNextJsonInteger(const String& str, int16_t startPos) {
+  if (startPos < 0 || startPos >= str.length()) return false;
+  return str[startPos] == '-' || isDigit(str[startPos]);
+}
+
+bool isNextJsonArray(const String& str, int16_t startPos) {
+  if (startPos < 0 || startPos >= str.length()) return false;
+  return str[startPos] == '[';
+}
+
+bool isNextJsonNode(const String& str, int16_t startPos) {
+  if (startPos < 0 || startPos >= str.length()) return false;
+  return str[startPos] == '{';
+}
+
+//return endPos - position of close "
+uint16_t endJsonStringPos(const String& str, int16_t startPos) {
+  if (str[startPos] != '"') return startPos;
+  bool escaped = false;
+  startPos++;
+  while (startPos < str.length()) {
+    if (!escaped && str[startPos] == '\\') escaped = true;
+    else if (!escaped && str[startPos] == '"') return startPos;
+    else if (escaped) escaped = false;
+    startPos++;
+  }
+  Serial.println("Close \" not found");
+  return startPos;
+}
+
+uint16_t parseJsonString(const String& str, String& out, int16_t startPos) {
+  int16_t endPos = endJsonStringPos(str, startPos);
+  if (startPos + 1 < endPos) out = str.substring(startPos + 1, endPos);
+  return endPos + 1;
+}
+
+//return endPos - position of last letter + 1
+uint16_t parseJsonBool(const String& str, String& out, int16_t startPos) {
+  if (str[startPos] == 't' && str.substring(startPos, startPos + 4) == "true") {
+    jsonValue.boolValue = true;
+    return (uint16_t)(startPos + 4);
+  } else if (str[startPos] == 'f' && str.substring(startPos, startPos + 5) == "false") {
+    jsonValue.boolValue = false;
+    return (uint16_t)(startPos + 5);
+  }
+  //Serial.print("Can't parse bool str[");
+  //Serial.print(startPos);
+  //Serial.print("]=");
+  //Serial.println(str[startPos]);
+  return (uint16_t)startPos;
+}
+
+//return endPos - position of last digit + 1
+uint16_t parseJsonInteger(const String& str, int16_t startPos) {
+  if (str[startPos] == '-') {
+    jsonValue.boolValue = true;
+    startPos++;
+  } else jsonValue.boolValue = false;
+  jsonValue.unsignedIntValue = 0;
+  while (startPos < str.length() && isDigit(str[startPos])) {
+    jsonValue.unsignedIntValue = jsonValue.unsignedIntValue * 10 + (str[startPos] - '0');
+    startPos++;
+  }
+  return startPos;
+}
+
+uint16_t endJsonIntegerPos(const String& str, int16_t startPos) {
+  if (str[startPos] == '-')
+    startPos++;
+  while (startPos < str.length() && isDigit(str[startPos]))
+    startPos++;
+  return startPos;
+}
+
+//return endPos - position of this array end position + 1
+uint16_t endJsonArrayPos(const String& str, int16_t startPos) {
+  bool insideString = false;
+  bool escaped = false;
+  if (str[startPos] != '[') return startPos;
+  uint16_t counter = 1;
+  startPos++;
+  while (startPos < str.length()) {
+    if (str[startPos] == '[' && !insideString) counter++;
+    else if (str[startPos] == ']' && !insideString) counter--;
+    else if (!escaped && str[startPos] == '\\') escaped = true;
+    else if (!escaped && str[startPos] == '"') insideString = !insideString;
+    else if (escaped) escaped = false;
+    startPos++;
+    if (counter == 0) return startPos;
+  }
+}
+
+//return endPos - position of this node end position + 1
+uint16_t endJsonNodePos(const String& str, int16_t startPos) {
+  bool insideString = false;
+  bool escaped = false;
+  if (str[startPos] != '{') return startPos;
+  uint16_t counter = 1;
+  startPos++;
+  while (startPos < str.length()) {
+    if (str[startPos] == '{' && !insideString) counter++;
+    else if (str[startPos] == '}' && !insideString) counter--;
+    else if (!escaped && str[startPos] == '\\') escaped = true;
+    else if (!escaped && str[startPos] == '"') insideString = !insideString;
+    else if (escaped) escaped = false;
+    startPos++;
+    if (counter == 0) return startPos;
+  }
+}
+
+//return new startPos from valuable symbol
+uint16_t skipSymbolsJson(const String& str, int16_t startPos, char alsoSkip) {
+  while (startPos < str.length() && (str[startPos] < '!' || str[startPos] == alsoSkip)) startPos++;
+  return startPos;
+}
+
+//return new startPos after json value
+uint16_t skipJsonValue(const String& str, int16_t startPos, char alsoSkip) {
+  if (isNextJsonString(str, startPos)) {
+    return (uint16_t)(endJsonStringPos(str, startPos) + 1);
+  } else if (isNextJsonBool(str, startPos)) {
+    if (str[startPos] == 't' && str.substring(startPos, startPos + 4) == "true") {
+      return (uint16_t)(startPos + 5);
+    } else if (str[startPos] == 'f' && str.substring(startPos, startPos + 5) == "false") {
+      return (uint16_t)(startPos + 6);
+    }
+    //Serial.print("Can't parse bool str[");
+    //Serial.print(startPos);
+    //Serial.print("]=");
+    //Serial.println(str[startPos]);
+    return (uint16_t)startPos;
+  } else if (isNextJsonInteger(str, startPos)) {
+    if (str[startPos] == '-') startPos++;
+    while (startPos < str.length() && isDigit(str[startPos])) startPos++;
+    return startPos + 1;
+  } else if (isNextJsonArray(str, startPos)) {
+    return endJsonArrayPos(str, startPos);
+  } else if (isNextJsonNode(str, startPos)) {
+    return endJsonNodePos(str, startPos);
+  }
+  //Serial.print("Unknown field value: ");
+  //Serial.println(str.substring(startPos));
+  return startPos;
 }

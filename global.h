@@ -63,7 +63,7 @@ struct ConfigStruct {
   uint8_t showTemperature = 1;                //"No", "t1", "t2", "MOS", "Avg", "Min", "Max"
   uint8_t invIdle = 5;                        //w 0-255 Inverter Idle Consumption, for panel power calculation
   uint8_t invEfficiency = 90;                 //% 1 - 100 Inverter Energy conversion efficiency, for panel power calculation
-  uint8_t ignoreConditionsDuration = 2;  //(2+1)*10=30s 1-256x10 sec, force change mode duration, all rules is ignored during this period
+  uint8_t ignoreConditionsDuration = 2;       //(2+1)*10=30s 1-256x10 sec, force change mode duration, all rules is ignored during this period
 } config;
 
 /* =========== VARIABLES ===========*/
@@ -89,6 +89,8 @@ struct BoxFlagsStruct {
   bool isNeedToSaveConfig : 1;
   bool networkScreenNeedToRedraw : 1;
 
+  bool isNeedToResetJsy : 1;
+  bool isNeedToResetStatInNVS : 1;
   //true
   bool jsyReadFailed : 1;
   bool bmsReadFailed : 1;
@@ -96,9 +98,17 @@ struct BoxFlagsStruct {
                false, false, false, false,
                false, false, false, false,
                false, false, false, false,
-               true, true };
+               false, false, true, true };
 
 uint16_t solarPanelPower = 0;
+
+inline void setSolarPower(int16_t value) {
+    if (solarPanelPower != value) {
+        solarPanelPower = value;
+        boxFlags.solarPanelInfoUpdated = true;
+    }
+}
+
 BoxMode boxMode = UNKNOWN;
 
 struct BMSDataStruct {
@@ -149,11 +159,13 @@ struct StatInfoStruct {
   uint32_t sPanelMeteringTotal = 0;        //Wh*10 0 - 4,294,967,295
   uint32_t gridModeTime = 0;               //s time on INV_PREHEAT, TO_GRID,GRID modes
   uint32_t invModeTime = 0;                //s time on TO_INV, INV,INV+ modes
-  uint32_t prevOutputMetering = 0;         //Wh
-  uint32_t gridOutputMetering = 0;         //wh
-  uint32_t invOutputMetering = 0;          //wh
-
+  uint32_t prevOutputMetering = 0;         // /3200 KWh
+  uint32_t gridOutputMetering = 0;         // *0.01 KWH INV_PREHEAT, TO_INV, GRID modes, P.S. INV_PREHEAT and TO_INV cause delta mostly accumulated on previuos mode
+  uint32_t invOutputMetering = 0;          // *0.01 KWH TO_GRID INV INV+ modes, P.S. TO_GRID cause delta mostly accumulated on previuos mode
+  uint32_t warnTime = 0;                   //s time on INV_PREHEAT, TO_GRID, GRID modes and outputvoltage < 190V
+  uint32_t failTime = 0;                   //s time on TO_INV, INV, INV+ modes  and outputvoltage < 190V
 } statInfo;
+
 
 uint8_t forceChangeMode = 0;  //0-NO_FORCE, 1-TO_GRID, 2-TO_INV, 3-TO_INV_PLUS
 
@@ -163,9 +175,11 @@ uint32_t modeChangeLogMillis[LOG_SIZE] = { 0 };
 BoxMode modeChangeLogMode[LOG_SIZE] = { UNKNOWN };
 uint8_t lastChangeIndex = LOG_SIZE - 1;
 
-/* =========== SETTINGS VARIABLES ===========*/
+/* =========== MILLIS VARIABLES ===========*/
+uint32_t now; //call millis() one per loop, Every call millis(), the Arduino has to disable interrupts, copy a 4-byte volatile variable from memory, and re-enable interrupts.
+uint32_t lastStatMillis;
+uint32_t lastModeChangeMillis;
 uint32_t lastConfigChangesMillis;
-
 /* =========== UTIL METHODS ===========*/
 
 uint32_t getSolarPanelMetering12h() {
@@ -196,3 +210,99 @@ int8_t getBmsTemperature() {
       return 0;
   }
 }
+
+inline void logModeChange(){
+  if (lastChangeIndex < LOG_SIZE - 1) lastChangeIndex++;
+    else lastChangeIndex = 0;
+    modeChangeLogMillis[lastChangeIndex] = now;
+    modeChangeLogMode[lastChangeIndex] = boxMode;
+}
+
+void _appendCellInfo(String &result, uint8_t i) {
+  result += (i + 1);
+  result += ": ";
+  result += bmsData.cellVoltages[i] / 1000;
+  result += ".";
+  if (bmsData.cellVoltages[i] % 1000 < 10) result += "00";
+  else if (bmsData.cellVoltages[i] % 1000 < 100) result += "0";
+  result += bmsData.cellVoltages[i] % 1000;
+}
+
+String getCurrentBoxStatus() {
+  String result;
+  //result.reserve();
+  result += "Status: ";                                      //8
+  result += boxFlags.bmsReadFailed ? "Fail\n\r" : "OK\n\r";  //4
+  if (boxFlags.bmsReadFailed) return result;
+
+  result += bmsData.soc;
+  result += "% ";  //5
+  result += constrain(bmsData.totalVoltage / 100, 0, 99);
+  result += ".";
+  if ((bmsData.totalVoltage % 100) < 10) result += "0";
+  result += bmsData.totalVoltage % 100;
+  result += "v ";  //7
+  result += "\n\r";
+
+  uint8_t rows = (bmsData.numCells + 1) / 2;
+  //Serial.print("rows");
+  //Serial.println(rows);
+  for (uint8_t i = 0; i < rows; i++) {
+    _appendCellInfo(result, i);
+    result += " ";
+    if ((i + rows) < bmsData.numCells) _appendCellInfo(result, i + rows);
+    result += "\n\r";
+  }
+
+  result += "Max-Min:";
+  uint16_t diff = bmsData.cellVoltages[bmsData.maxVoltageCellIndex] - bmsData.cellVoltages[bmsData.minVoltageCellIndex];
+  result += diff / 1000;
+  result += ".";
+  if (diff % 1000 < 10) result += "00";
+  else if (diff % 1000 < 100) result += "0";
+  result += diff % 1000;
+  result += "\n\r";
+
+
+  if (bmsData.current > 0) {
+    result += "Charge: ";
+    result += constrain(bmsData.current / 100, 0, 999);
+    result += ".";
+    if ((bmsData.current % 100) < 10) result += "0";
+    result += (bmsData.current % 100);
+    result += "A\n\r";
+  } else if (bmsData.current < 0) {
+    result += "Discharge: ";
+    result += constrain(bmsData.current / -100, 0, 999);
+    result += ".";
+    if (((-bmsData.current % 100)) < 10) result += "0";
+    result += ((-bmsData.current) % 100);
+    result += "A\n\r";
+  } else {
+    result += "Zero current\n\r";
+  }
+  if (bitRead(bmsData.alarmStatus, 0)) result += "WARNING: Low capacity alarm";
+  if (bitRead(bmsData.alarmStatus, 1)) result += "WARNING: MOS overtemperature alarm";
+  if (bitRead(bmsData.alarmStatus, 2)) result += "WARNING: Charge overvoltage alarm";
+  if (bitRead(bmsData.alarmStatus, 3)) result += "WARNING: Discharge overvoltage alarm";
+  if (bitRead(bmsData.alarmStatus, 4)) result += "WARNING: Temp1 overtemperature alarm";
+  if (bitRead(bmsData.alarmStatus, 5)) result += "WARNING: Charge overcurrent alarm";
+  if (bitRead(bmsData.alarmStatus, 6)) result += "WARNING: Discharge overcurrent alarm";
+  if (bitRead(bmsData.alarmStatus, 7)) result += "WARNING: Differential pressure alarm";
+  if (bitRead(bmsData.alarmStatus, 8)) result += "WARNING: Temp2 overtemperature alarm";
+  if (bitRead(bmsData.alarmStatus, 9)) result += "WARNING: Battery low temperature alarm";
+  if (bitRead(bmsData.alarmStatus, 10)) result += "WARNING: Unit overvoltage alarm";
+  if (bitRead(bmsData.alarmStatus, 11)) result += "WARNING: Unitundervoltage alarm";
+  if (bitRead(bmsData.alarmStatus, 12)) result += "WARNING: 309_A protection";
+  if (bitRead(bmsData.alarmStatus, 13)) result += "WARNING: 309_B protection";
+  if (bitRead(bmsData.alarmStatus, 14)) result += "WARNING: Unknown1(reserved) alarm";
+  if (bitRead(bmsData.alarmStatus, 15)) result += "WARNING: Unknown2(reserved) alarm";
+
+
+
+  //Serial.print("=========== result.length() ==");
+  //Serial.println(result.length());
+  return result;
+}
+
+

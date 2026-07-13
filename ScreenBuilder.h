@@ -1,38 +1,59 @@
+/* CONSTANTS */
+#define ITEMS_PER_PAGE 6
+#define SCROLL_X 126
+//status bar icons
+#define WIFI_X 120
+#define SAVE_X 111
+#define FORCE_X 96
+#define STATUS_BAR_ENDY 8
+#define SOLAR_INFO_END_X 79         //16px solar icon width + 8px metering icon width + 7px*8symbols - 1
+#define SOLAR_INFO_ENDLINE_ENDY 24  //9 +2*8(px per line) - 1
+#define BAT_X 1
+#define BAT_W 12
+#define BAT_Y 47
+#define BAT_H 16
+#define BAT_INFO_Y 40  //64 - 3*8(px per line)
+#define BAT_INFO_X 15
+#define BAT_INFO_ENDX 63           //15 + 7*7(px per symbol) - 1
+#define BATTERY_INFO_ENDLINE_X 66  //14 + 7*7(px per symbol) + 3
+#define BATTERY_INFO_ENDLINE_Y 40  //64 - 3*8
+#define BOX_X 76
+#define BOX_Y 31
+#define BOX_ENDX 113
+#define BOX_ENDY 41
+#define HOME_X 113
+#define FRIDGE_X 114
+#define FRIDGE_Y 48
+
+
 /* ==================================================================== */
 /* COMMON ELEMENT BUILDER */
 /* ==================================================================== */
-#define ITEMS_PER_PAGE 5  // +1 if xItemShift == 0
 
-void _drawScroll(uint8_t itemsCount, uint8_t itemsPerPage, uint8_t shift) {
-  uint16_t totalHeight = itemsPerPage * 8;
-  uint16_t a = itemsPerPage * totalHeight;
-  uint8_t scrollHeight = a / itemsCount;
-  uint8_t oneElementHeight = totalHeight / itemsCount;
-  uint8_t y0 = 13 + (shift * oneElementHeight);
-  uint8_t y1 = y0 + scrollHeight;
-  oled.fastLineV(126, y0, y1);
+void _drawScroll(uint8_t itemsCount, uint8_t shift) {
+  uint8_t y0 = 13 + (shift * (ITEMS_PER_PAGE * 8 / itemsCount));         //y after statusbar + (shift * scaled one element height)
+  uint8_t y1 = y0 + (ITEMS_PER_PAGE * ITEMS_PER_PAGE * 8 / itemsCount);  // ITEMS_PER_PAGE * 8 = visible area height;  ITEMS_PER_PAGE/itemsCount = scale
+  oled.fastLineV(SCROLL_X, y0, y1);
   //oled.fastLineV(127, y0, y1);
 }
 
 void drawWifiStatus() {
-  if (boxFlags.isWifiConnected) {
-    oled.drawBitmap2(120, 0, box_wifi, 7, 8);
-  } else {
-    oled.drawBitmap2(120, 0, box_nowifi, 7, 8);
-  }
+  if (boxFlags.isWifiConnected)
+    oled.drawBitmap2(WIFI_X, 0, box_wifi, 7, 8);
+  else oled.drawBitmap2(WIFI_X, 0, box_nowifi, 7, 8);
 }
 
 void drawSaveStatus() {
-  oled.clear(111, 0, 119, 7);
+  oled.clear(SAVE_X, 0, SAVE_X + 7, 7);
   if (!boxFlags.isNeedToSaveConfig) return;
-  oled.drawBitmap2(111, 0, box_save2, 8, 8);
+  oled.drawBitmap2(SAVE_X, 0, box_save2, 8, 8);
 }
 
 void drawForceChangeMode() {
-  oled.clear(96, 0, 110, 7);
+  oled.clear(FORCE_X, 0, FORCE_X + 14, 7);
   if (forceChangeMode == 0) return;
-  oled.drawBitmap2(96, 0, box_hand, 8, 8);
-  oled.setCursorXY(104, 0);
+  oled.drawBitmap2(FORCE_X, 0, box_hand, 8, 8);
+  oled.setCursorXY(FORCE_X + 8, 0);
   if (forceChangeMode == 1) oled.print("G");
   else if (forceChangeMode == 2) oled.print("I");
   else if (forceChangeMode == 3) oled.print("+");
@@ -42,8 +63,7 @@ void buildStatusLine(const __FlashStringHelper* screenLabel) {
   oled.setCursorXY(0, 0);
   oled.print(screenLabel);
   drawWifiStatus();
-  //statusBarLine
-  oled.fastLineH(8, 1, 127);
+  oled.fastLineH(STATUS_BAR_ENDY, 1, 127);  //status bar bottom line
 }
 
 void printItem(bool selected, const String& itemLabel, const __FlashStringHelper* prefix, bool invert = true, bool newLine = true) {
@@ -55,10 +75,9 @@ void printItem(bool selected, const String& itemLabel, const __FlashStringHelper
   if (newLine) oled.println();
 }
 
-//number should be less 1K, digits 0 - 3
+//number should be less 1K, digits 1 - 3
 void printMillis(uint16_t number, uint8_t digits = 3) {
   oled.print(".");
-  if (digits == 0) return;
   for (uint8_t i = 0; i < 3 - digits; i++) number /= 10;
   oled.printNumberFmt(number, digits);
 }
@@ -100,13 +119,31 @@ void printGigaInt6char(uint32_t numberx01) {
   }
 }
 
+void printDayHourMinSec(uint32_t seconds, uint8_t daySymbolsCount = 5) {
+  uint16_t d = seconds / 86400;
+  seconds %= 86400;
+  oled.printNumberFmt(d, daySymbolsCount, ' ');
+  oled.print("d");
+  uint8_t h = seconds / 3600;
+  seconds %= 3600;
+  oled.printNumberFmt(h, 2, '0');
+  oled.print("h");
+  uint8_t m = seconds / 60;
+  seconds %= 60;
+  oled.printNumberFmt(m, 2);
+  oled.print("m");
+  oled.printNumberFmt((uint8_t)seconds, 2);
+  oled.print("s");
+}
+
 /* ==================================================================== */
 /* HOME SCREEN BUILDER */
 /* ==================================================================== */
 
 //needToClear = true - if redraw over previous state, false - if was full clear before
-void drawPanelInfo(bool needToClear = true);
-void drawBatInfo(bool needToClear = true);
+void drawSolarPanelInfo(bool needToClear = true);
+void _drawBat();
+void drawBatInfo(bool);
 void drawBoxMode(bool needToClear = true);
 void drawOutputInfo(bool needToClear = true);
 
@@ -115,88 +152,106 @@ void drawHomeScreen() {
   buildStatusLine(F(" Home:"));
   drawSaveStatus();
   drawForceChangeMode();
-  oled.drawBitmap2(0, 9, box_solar_panel_sun, 16, 16);
-  drawPanelInfo(false);
-  oled.fastLineV(80, 9, 24);  //end solar info
+  oled.drawBitmap2(0, STATUS_BAR_ENDY + 1, box_solar_panel_sun, 16, 16);
+  drawSolarPanelInfo(false);
+  oled.fastLineV(SOLAR_INFO_END_X + 1, STATUS_BAR_ENDY + 1, SOLAR_INFO_ENDLINE_ENDY);  //end solar info
+  _drawBat();
   drawBatInfo(false);
-  oled.fastLineV(71, 42, 63);  //end batt info
+  oled.fastLineV(BATTERY_INFO_ENDLINE_X, BATTERY_INFO_ENDLINE_Y, 63);  //end batt info
   drawBoxMode(false);
   //box
-  oled.roundRect(76, 31, 113, 41, STROKE);
+  oled.roundRect(BOX_X, BOX_Y, BOX_ENDX, BOX_ENDY, STROKE);
   //grid
-  oled.drawBitmap2(81, 9, box_grid, 15, 16);
+  oled.drawBitmap2(SOLAR_INFO_END_X + 2, STATUS_BAR_ENDY + 1, box_grid, 15, 16);
   //home
-  oled.drawBitmap2(113, 10, box_home, 15, 16);
+  oled.drawBitmap2(HOME_X, STATUS_BAR_ENDY + 2, box_home, 15, 16);
   //box to fridge
-  oled.fastLineH(37, 116, 119);
-  oled.fastLineV(120, 38, 42);
-  oled.drawArrowHead(120, 45, 2);
+  oled.fastLineH(BOX_Y + 6, BOX_ENDX + 3, FRIDGE_X + 5);
+  oled.fastLineV(FRIDGE_X + 6, BOX_Y + 7, FRIDGE_Y - 6);
+  oled.drawArrowHead(FRIDGE_X + 6, FRIDGE_Y - 3, 2);
   //fridge
-  oled.drawBitmap2(114, 48, box_fridge, 14, 16);
+  oled.drawBitmap2(FRIDGE_X, FRIDGE_Y, box_fridge, 14, 16);
   drawOutputInfo(false);
   oled.update();
 }
-
-void drawPanelInfo(bool needToClear) {
+#define SOLAR_INFO_X 16
+void drawSolarPanelInfo(bool needToClear) {
   if (needToClear) {
-    oled.clear(16, 9, 79, 24);  //12h metering and total
-    oled.clear(0, 25, 71, 32);  //arrow tail and solar power
-    oled.clear(1, 33, 5, 44);   //arrow
+
+    oled.clear(SOLAR_INFO_X, STATUS_BAR_ENDY + 1, SOLAR_INFO_END_X, STATUS_BAR_ENDY + 16);            //12h metering and total
+    oled.clear(SOLAR_INFO_X - 9, STATUS_BAR_ENDY + 17, SOLAR_INFO_END_X - 16, STATUS_BAR_ENDY + 24);  //arrow tail and solar power
+    oled.clear(1, 33, 5, 44);                                                                         //arrow
   }
 
-  oled.drawBitmap2(16, 10, box_12h, 8, 8);
-  oled.setCursorXY(24, 10);
+  oled.drawBitmap2(SOLAR_INFO_X, STATUS_BAR_ENDY + 2, box_12h, 7, 8);
+  oled.setCursorXY(SOLAR_INFO_X + 7, 10);
   uint32_t w12h = getSolarPanelMetering12h();
   if (w12h < N100M) printInt6char(w12h);
   else (printGigaInt6char(w12h / 10));
   oled.print("Wh");
-  oled.drawBitmap2(16, 18, box_sum, 8, 8);
-  oled.setCursorXY(24, 18);
+  oled.drawBitmap2(SOLAR_INFO_X, STATUS_BAR_ENDY + 10, box_sum, 6, 8);
+  oled.setCursorXY(SOLAR_INFO_X + 7, STATUS_BAR_ENDY + 10);
   if (statInfo.sPanelMeteringTotal < N10M) printInt6char(statInfo.sPanelMeteringTotal * 10);
   else (printGigaInt6char(statInfo.sPanelMeteringTotal));
   oled.print("Wh");
-  oled.setCursorXY(7, 26);
-  oled.print(solarPanelPower);
+  oled.setCursorXY(SOLAR_INFO_X - 9, STATUS_BAR_ENDY + 18);
+  oled.print(constrain(solarPanelPower, 0, 999999));
   oled.print("W");
 
   //arrow from panel to bat
-  oled.fastLineV(4, 29, 41);
-  oled.drawArrowHead(4, 44, 2);
+  oled.fastLineV(4, STATUS_BAR_ENDY + 21, BAT_Y - 6);
+  oled.drawArrowHead(4, BAT_Y - 3, 2);
+}
+
+
+inline void _drawBat() {
+  oled.fastLineV(BAT_X, BAT_Y + 2, BAT_Y + BAT_H);
+  oled.fastLineV(BAT_X + BAT_W, BAT_Y + 2, BAT_Y + BAT_H);
+  oled.fastLineH(BAT_Y, BAT_X + 2, BAT_X + BAT_W - 2);
+  oled.fastLineH(BAT_Y + 2, BAT_X + 1, BAT_X + BAT_W - 1);
+  oled.fastLineH(BAT_Y + BAT_H, BAT_X + 1, BAT_X + BAT_W - 1);
+  oled.dot(BAT_X + 2, BAT_Y + 1);
+  oled.dot(BAT_X + BAT_W - 2, BAT_Y + 1);
+}
+
+void _drawSocBlocks() {
+  if (bmsData.soc == 0) return;
+  oled.rect2(BAT_X + 2, BAT_Y + 12, BAT_X + 10, BAT_Y + 14, false);
+  if(bmsData.soc >= 20) oled.fastLineH(BAT_Y + 13, BAT_X + 3, BAT_X + 9); //WA, need to fix fill rect
+  if (bmsData.soc < 40) return;
+  oled.rect2(BAT_X + 2, BAT_Y + 8, BAT_X + 10, BAT_Y + 10, false);
+  if(bmsData.soc >= 60) oled.fastLineH(BAT_Y + 9, BAT_X + 3, BAT_X + 9); //WA, need to fix fill rect
+  if (bmsData.soc < 80) return;
+  oled.rect2(BAT_X + 2, BAT_Y + 4, BAT_X + 10, BAT_Y + 6, false);
+  if(bmsData.soc >= 100) oled.fastLineH(BAT_Y + 5, BAT_X + 3, BAT_X + 9); //WA, need to fix fill rect
 }
 
 void drawBatInfo(bool needToClear) {
   if (needToClear) {
-    oled.clear(1, 47, 13, 63);   //battery
-    oled.clear(15, 40, 70, 63);  //batInfo
+    oled.clear(BAT_X + 1, BAT_Y + 3, BAT_X + 11, BAT_Y + 15);  //battery inner
+    oled.clear(BAT_INFO_X, BAT_INFO_Y, BAT_INFO_ENDX, 63);     //batInfo
   }
-  //bat
-  oled.fastLineV(1, 49, 63);
-  oled.fastLineV(13, 49, 63);
-  oled.fastLineH(47, 3, 11);
-  oled.fastLineH(49, 2, 12);
-  oled.fastLineH(63, 2, 12);
-  oled.dot(3, 48);
-  oled.dot(11, 48);
-  if (boxFlags.bmsReadFailed)
-    oled.drawBitmap2(2, 50, box_batt_fail, 11, 13);
-  //TODO else draw blocks
+
+  if (boxFlags.bmsReadFailed) oled.drawBitmap2(BAT_X + 1, BAT_Y + 3, box_batt_fail, 11, 13);
+  else _drawSocBlocks();
   //batt info
-  oled.setCursorXY(15, 40);
+  oled.setCursorXY(BAT_INFO_X, BAT_INFO_Y);
   if (bmsData.current > 0) oled.print("←");
   else if (bmsData.current < 0) oled.print("→");
   else oled.print(" ");
   uint16_t c = bmsData.current < 0 ? -(bmsData.current) : bmsData.current;
   c = constrain(c, 0, 99999);
   oled.print(c / 100);
-  printMillis((c % 100) * 10, 2);
+  printMillis((c % 100) * 10, c < N10K ? 2 : 1);
   oled.print("A");
-  oled.setCursorXY(15, 48);
+
+  oled.setCursorXY(BAT_INFO_X, BAT_INFO_Y + 8);
   if (bmsData.soc == 100)
-    oled.drawBitmap2(15, 48, box_100, 14, 8);
+    oled.drawBitmap2(BAT_INFO_X, BAT_INFO_Y + 8, box_100, 14, 8);
   else
     oled.printNumberFmt(bmsData.soc, 2);
 
-  oled.setCursorXY(29, 48);
+  oled.setCursorXY(BAT_INFO_X + 14, BAT_INFO_Y + 8);
   oled.print("%");
   if (config.showTemperature != 0) {
     int8_t t = getBmsTemperature();
@@ -204,68 +259,14 @@ void drawBatInfo(bool needToClear) {
     oled.print(constrain(t, -99, 99));
     oled.print("℃");
   }
-  oled.setCursorXY(15, 56);
 
+  oled.setCursorXY(BAT_INFO_X, BAT_INFO_Y + 16);
   uint16_t v = constrain(bmsData.totalVoltage, 0, 99999);
   oled.print(v / 100);
   printMillis((v % 100) * 10, 2);
-  oled.print("v");
+  oled.print("V");
 }
 
-void _drawGridToBoxArrow();
-void _clearGridToBoxArrow();
-void _drawBoxToHomeArrow();
-void _clearBoxToHomeArrow();
-void _drawBatToInv();
-void _drawInvToBoxArrow();
-void _clearBatToBox();
-
-void drawBoxMode(bool needToClear) {
-  if (boxMode == UNKNOWN) {
-    if (needToClear) oled.clear(81, 33, 110, 40);
-    oled.setCursorXY(81, 33);
-    oled.print("????");
-  } else if (boxMode == TO_GRID) {
-    if (needToClear) oled.clear(81, 33, 110, 40);
-    //oled.setCursorXY(81, 33);
-    //oled.print("GRID");
-    _drawGridToBoxArrow();
-    if (needToClear) _clearBatToBox();
-  } else if (boxMode == GRID) {
-    oled.setCursorXY(81, 33);
-    //if (!needToClear)
-    oled.print("GRID");
-    _drawGridToBoxArrow();
-  } else if (boxMode == INV_PREHEAT) {
-    oled.setCursorXY(81, 33);
-    if (!needToClear) oled.print("GRID");
-    _drawBatToInv();
-  } else if (boxMode == TO_INV) {
-    if (needToClear) oled.clear(81, 33, 110, 40);
-    oled.setCursorXY(81, 33);
-    //oled.print("INV");
-    if (!needToClear) _drawBatToInv();
-    _drawInvToBoxArrow();
-    if (needToClear) _clearGridToBoxArrow();
-  } else if (boxMode == INV) {
-    if (needToClear) oled.clear(81, 33, 110, 40);
-    oled.setCursorXY(81, 33);
-    oled.print("INV");
-    if (!needToClear) {
-      _drawBatToInv();
-      _drawInvToBoxArrow();
-    }
-    if (needToClear) _clearBoxToHomeArrow();
-  } else if (boxMode == INV_PLUS) {
-    oled.setCursorXY(81, 33);
-    oled.print("INV+");
-    if (!needToClear) {
-      _drawBatToInv();
-      _drawInvToBoxArrow();
-    }
-    _drawBoxToHomeArrow();
-  }
-}
 
 void _drawGridToBoxArrow() {
   oled.fastLineH(21, 97, 99);
@@ -304,6 +305,58 @@ void _clearBatToBox() {
   oled.clear(11, 34, 73, 39);
 }
 
+void _clearBoxMode() {
+  oled.clear(81, 33, 110, 40);
+}
+
+void drawBoxMode(bool needToClear) {
+  if (boxMode == UNKNOWN) {
+    if (needToClear) _clearBoxMode();
+    oled.setCursorXY(81, 33);
+    oled.print("????");
+  } else if (boxMode == TO_GRID) {
+    if (needToClear) _clearBoxMode();
+    //oled.setCursorXY(81, 33);
+    //oled.print("GRID");
+    _drawGridToBoxArrow();
+    if (needToClear) _clearBatToBox();
+  } else if (boxMode == GRID) {
+    oled.setCursorXY(81, 33);
+    //if (!needToClear)
+    oled.print("GRID");
+    _drawGridToBoxArrow();
+  } else if (boxMode == INV_PREHEAT) {
+    oled.setCursorXY(81, 33);
+    if (!needToClear) oled.print("GRID");
+    _drawBatToInv();
+  } else if (boxMode == TO_INV) {
+    if (needToClear) _clearBoxMode();
+    oled.setCursorXY(81, 33);
+    //oled.print("INV");
+    if (!needToClear) _drawBatToInv();
+    _drawInvToBoxArrow();
+    if (needToClear) _clearGridToBoxArrow();
+  } else if (boxMode == INV) {
+    if (needToClear) _clearBoxMode();
+    oled.setCursorXY(81, 33);
+    oled.print("INV");
+    if (!needToClear) {
+      _drawBatToInv();
+      _drawInvToBoxArrow();
+    }
+    if (needToClear) _clearBoxToHomeArrow();
+  } else if (boxMode == INV_PLUS) {
+    oled.setCursorXY(81, 33);
+    oled.print("INV+");
+    if (!needToClear) {
+      _drawBatToInv();
+      _drawInvToBoxArrow();
+    }
+    _drawBoxToHomeArrow();
+  }
+}
+
+
 void drawOutputInfo(bool needToClear) {
   if (needToClear) {
     oled.clear(72, 48, 113, 63);
@@ -331,19 +384,19 @@ void homeHandleEncoderCommand() {
     encResetStates();
   }
   if (p != encPosition) {
-    Serial.print("position = ");
-    Serial.println(encPosition);
+    //Serial.print("position = ");
+    //Serial.println(encPosition);
   }
   if (encPosition >= ENCODER_TICKS_TO_CHANGE_MODE) {
     if (forceChangeMode == 0 && boxMode == INV) forceChangeMode = 3;  //TO_INV_PLUS
-    else if (forceChangeMode == 2) forceChangeMode = 3;                        //TO_INV_PLUS
-    else if (forceChangeMode < 2) forceChangeMode = 2;                         //TO_INV
+    else if (forceChangeMode == 2) forceChangeMode = 3;               //TO_INV_PLUS
+    else if (forceChangeMode < 2) forceChangeMode = 2;                //TO_INV
     boxFlags.boxModeUpdated = true;
     encPosition = 0;
   } else if (encPosition <= -ENCODER_TICKS_TO_CHANGE_MODE) {
     if (forceChangeMode == 0 && boxMode == INV_PLUS) forceChangeMode = 2;  //TO_INV
-    else if (forceChangeMode == 3) forceChangeMode = 2;                             //TO_INV
-    else if (forceChangeMode != 1) forceChangeMode = 1;                             //TO_GRID
+    else if (forceChangeMode == 3) forceChangeMode = 2;                    //TO_INV
+    else if (forceChangeMode != 1) forceChangeMode = 1;                    //TO_GRID
     boxFlags.boxModeUpdated = true;
     encPosition = 0;
   }
@@ -392,7 +445,7 @@ void menuHandleEncoderCommand() {
 /* ==================================================================== */
 /* BATT INFO SCREEB BUILDER */
 /* ==================================================================== */
-ScrollListScreen battInfoScreen(ITEMS_PER_PAGE + 1, 1);
+ScrollListScreen battInfoScreen(ITEMS_PER_PAGE, 1);
 
 uint8_t _cellInfoRows = 0;
 uint8_t _battInfoVersion = 0;
@@ -413,8 +466,8 @@ void _printCellInfo(uint8_t cellNo) {
 void _drawBattInfoItem(uint8_t idx) {
   if (idx == 0) {
     oled.print(F("Status: "));
-    Serial.print("============bmsReadFailed ");
-    Serial.print(boxFlags.bmsReadFailed);
+    //Serial.print("============bmsReadFailed ");
+    //Serial.print(boxFlags.bmsReadFailed);
     if (boxFlags.bmsReadFailed) oled.println(F("Fail"));
     else {
       oled.print(F("OK #"));
@@ -508,7 +561,7 @@ void drawBattInfoScreen() {
   else
     oled.drawBitmap2(0, 57, box_back, 12, 7, true);
 
-  _drawScroll(9 + _cellInfoRows, ITEMS_PER_PAGE + 1, battInfoScreen.getShift());
+  _drawScroll(9 + _cellInfoRows, battInfoScreen.getShift());
   boxFlags.battInfoScreenNeedToRedraw = false;
   _battInfoVersion = bmsData.version;
   oled.update();
@@ -577,42 +630,93 @@ void drawOutputInfoScreen() {
 /* ==================================================================== */
 /* STAT SCREEN BUILDER */
 /* ==================================================================== */
-#define STAT_ITEMS_COUNT 23
-ScrollListScreen statScreen(ITEMS_PER_PAGE + 1, STAT_ITEMS_COUNT);
+#define STAT_ITEMS_COUNT 27
+ScrollListScreen statScreen(ITEMS_PER_PAGE, STAT_ITEMS_COUNT);
 
 void _drawStatItem(uint8_t idx) {
   if (idx == 0) {
     oled.println("Solar Panel:");
   } else if (idx == 1) {
-    oled.print("Update in: ");
-    oled.print(60 - statInfo.sPanelLastMinCounter);
-    oled.println("m");
+    oled.print("Update in: ");  //11
+    oled.print(59 - statInfo.sPanelLastMinCounter);
+    oled.print("m ");  //4
+    oled.print(59 - statInfo.sPanelLastSecCounter);
+    oled.println("s");  //3
   } else if (idx >= 2 && idx < 14) {
     oled.printNumberFmt((uint8_t)(idx - 1), 2, ' ');
     oled.print("h: ");
-    oled.println("123456789Wh");
+    uint16_t value = statInfo.sPanelMetering12h[(14 + statInfo.sPanelMetering12hIdx - idx) % 12];  //(startIndex + count + lastMeteringIdx - itemIdx) % count
+    oled.print(value / 1000);
+    oled.print(".");
+    oled.printNumberFmt((uint16_t)(value % 1000), 3, '0');
+    oled.println("KWh");
   } else if (idx == 14) {
     oled.print("Sum: ");
-    oled.println("123456789Wh");
+    uint32_t value = getSolarPanelMetering12h();
+    oled.print(value / 1000);
+    oled.print(".");
+    oled.printNumberFmt((uint16_t)(value % 1000), 3, '0');
+    oled.println("KWh");
   } else if (idx == 15) {
-    oled.print("Total: ");
-    oled.println("123456KWh");
+    oled.print("Total: ");  //7
+    if (statInfo.sPanelMeteringTotal < N10M) {
+      oled.print(statInfo.sPanelMeteringTotal / 100);  //5
+      oled.print(".");
+      oled.printNumberFmt((uint8_t)(statInfo.sPanelMeteringTotal % 100), 2, '0');  //3
+    } else oled.print(statInfo.sPanelMeteringTotal / 100);                         //8
+    oled.println("KWh");
   } else if (idx == 16) {
-    oled.println("-----------------");
+    oled.println("------------------");
   } else if (idx == 17) {
     oled.println("Output GRID:");
   } else if (idx == 18) {
-    oled.println("123456KWh");
+    oled.print(statInfo.gridOutputMetering / 100);  //8
+    oled.print(".");
+    oled.printNumberFmt((uint8_t)(statInfo.gridOutputMetering % 100), 2, '0');  //3
+    oled.println("KWh");
   } else if (idx == 19) {
-    oled.println("12d34h56m78s");
+    printDayHourMinSec(statInfo.gridModeTime);
+    oled.println();
   } else if (idx == 20) {
     oled.println("Output INV:");
   } else if (idx == 21) {
-    oled.println("123456KWh");
+    oled.print(statInfo.invOutputMetering / 100);  //8
+    oled.print(".");
+    oled.printNumberFmt((uint8_t)(statInfo.invOutputMetering % 100), 2, '0');  //3
+    oled.println("KWh");
   } else if (idx == 22) {
-    oled.println("12d34h56m78s");
+    printDayHourMinSec(statInfo.invModeTime);  //15
+    oled.println();
+  } else if (idx == 23) {
+    oled.println("------------------");
+  } else if (idx == 24) {
+    oled.println("Time with <190v output:");
+  } else if (idx == 25) {
+    oled.print("INV:");
+    printDayHourMinSec(statInfo.failTime, 4);  //15
+    oled.println();
+  } else if (idx == 26) {
+    oled.print("GRI:");
+    printDayHourMinSec(statInfo.warnTime, 4);  //15
+    oled.println();
   }
 }
+
+/*
+struct StatInfoStruct {
+  uint8_t sPanelLastSecCounter = 0;        //0 - 59s
+  uint8_t sPanelLastMinCounter = 0;        //0 - 59m
+  uint32_t sPanelCounterValue = 0;         //Ws Ws/60=Wh  0 - 4,294,967,295
+  uint16_t sPanelMetering12h[12] = { 0 };  //Wh 0 - 65,535  65kw
+  uint8_t sPanelMetering12hIdx = 0;        // 0 - 11, e.g. 8 - last hour, 7 previous hour, etc
+  uint32_t sPanelMeteringTotal = 0;        //Wh*10 0 - 4,294,967,295
+  uint32_t gridModeTime = 0;               //s time on INV_PREHEAT, TO_GRID,GRID modes
+  uint32_t invModeTime = 0;                //s time on TO_INV, INV,INV+ modes
+  uint32_t prevOutputMetering = 0;         // /3200 KWh
+  uint32_t gridOutputMetering = 0;         // *0.01 KWH
+  uint32_t invOutputMetering = 0;          // *0.01 KWH
+
+} statInfo;*/
 
 void drawStatScreen() {
   oled.clear();
@@ -629,7 +733,7 @@ void drawStatScreen() {
   else
     oled.drawBitmap2(0, 57, box_back, 12, 7, true);
 
-  _drawScroll(STAT_ITEMS_COUNT, ITEMS_PER_PAGE + 1, statScreen.getShift());
+  _drawScroll(STAT_ITEMS_COUNT, statScreen.getShift());
   boxFlags.statScreenNeedToRedraw = false;
   oled.update();
 }
@@ -697,7 +801,7 @@ void drawNetworkScreen() {
   } else {
     //4
     oled.print(F("Reconnect in: "));
-    oled.print((RECONNECT_INTERVAL - constrain(millis() - lastReconnectMillis, 0, RECONNECT_INTERVAL)) / 1000);
+    oled.print((RECONNECT_INTERVAL - constrain(now - lastReconnectMillis, 0, RECONNECT_INTERVAL)) / 1000);
     oled.println("s");
   }
 
@@ -709,32 +813,19 @@ void drawNetworkScreen() {
 /* ==================================================================== */
 /* LOG SCREEN BUILDER */
 /* ==================================================================== */
-uint32_t _logNow = 0;
+
 //uint8_t logItemShift = 0;
-ScrollListScreen logScreen(ITEMS_PER_PAGE + 1, LOG_SIZE);
+ScrollListScreen logScreen(ITEMS_PER_PAGE, LOG_SIZE + 1);
 
 void _printLogItem(uint8_t idx) {
+  if (idx == 0) {
+    oled.println("Mode Change Log:");
+    return;
+  }
+  idx -= 1;
   idx = (lastChangeIndex - idx + LOG_SIZE) % LOG_SIZE;
-  uint32_t ago = _logNow - modeChangeLogMillis[idx];
-  uint8_t d = ago / 86400000;
-  ago %= 86400000;
-  oled.printNumberFmt(d, 2);
-  //_printNumber2cFmt(d);
-  oled.print("d");
-  uint8_t h = ago / 3600000;
-  ago %= 3600000;
-  oled.printNumberFmt(h, 2);
-  //_printNumber2cFmt(h);
-  oled.print("h");
-  uint8_t m = ago / 60000;
-  ago %= 60000;
-  oled.printNumberFmt(m, 2);
-  //_printNumber2cFmt(m);
-  oled.print("m");
-  ago /= 1000;
-  oled.printNumberFmt((uint8_t)ago, 2);
-  //_printNumber2cFmt(ago);
-  oled.print("s");
+  uint32_t ago = now - modeChangeLogMillis[idx];
+  printDayHourMinSec(ago / 1000, 2);
   oled.print(" ");
   oled.println(boxModeStrings4c[modeChangeLogMode[idx]]);
 }
@@ -746,8 +837,6 @@ void drawLogScreen() {
     oled.drawArrowHead(126, 10, 0, 2);
     oled.setCursorXY(0, 13);  //21 29 37 45 53 61
   } else oled.setCursorXY(0, 9);
-
-  _logNow = millis();
   logScreen.draw(_printLogItem);
 
   if (logScreen.canScrollDown())
@@ -755,7 +844,7 @@ void drawLogScreen() {
   else
     oled.drawBitmap2(0, 57, box_back, 12, 7, true);
 
-  _drawScroll(LOG_SIZE, ITEMS_PER_PAGE + 1, logScreen.getShift());
+  _drawScroll(LOG_SIZE + 1, logScreen.getShift());
   boxFlags.logScreenNeedToRedraw = false;
   oled.update();
 }
@@ -902,7 +991,7 @@ void _drawSettingsItem(uint8_t itemIdx) {
   _settingsItem(itemIdx, F("→"));
 }
 
-ScrollListScreen settingsScreen(ITEMS_PER_PAGE + 1, SETTINGS_ITEMS_COUNT);
+ScrollListScreen settingsScreen(ITEMS_PER_PAGE, SETTINGS_ITEMS_COUNT);
 
 void drawSettingsScreen() {
   oled.clear();
@@ -925,7 +1014,7 @@ void drawSettingsScreen() {
   else
     oled.drawBitmap2(0, 57, box_back, 12, 7, selectedSettingsItem == SETTINGS_ITEMS_COUNT);
 
-  _drawScroll(SETTINGS_ITEMS_COUNT, ITEMS_PER_PAGE + 1, settingsScreen.getShift());
+  _drawScroll(SETTINGS_ITEMS_COUNT, settingsScreen.getShift());
   boxFlags.settingsScreenNeedToRedraw = false;
   oled.update();
 }
@@ -965,7 +1054,7 @@ void _saveSettingsValue() {
   if (*SETTINGS_DEFS[selectedSettingsItem].configValue != tempSettingsValue) {
     *SETTINGS_DEFS[selectedSettingsItem].configValue = tempSettingsValue;
     boxFlags.isNeedToSaveConfig = true;
-    lastConfigChangesMillis = millis();
+    lastConfigChangesMillis = now;
   }
   encResetStates();
   settingsEditMode = false;

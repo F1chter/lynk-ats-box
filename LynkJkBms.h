@@ -37,7 +37,7 @@ void bmsBegin() {
   bmsPrintRawResponse();
   if (!_bmsReadInProgress && !boxFlags.bmsReadFailed) {
     parseResponse();
-    Serial.println(bmsSimpleStatus());
+    //Serial.println(bmsSimpleStatus());
   }
 }
 
@@ -58,7 +58,7 @@ void bmsRead(uint32_t timeout_ms) {
     //readFailed = false;
     while (bmsSerial.available() && millis() - lastReadFromBmsMillis < timeout_ms) Serial.write(bmsSerial.read());
     if (bmsSerial.available()) {
-      Serial.println("Too many unexpected data from bms");
+      //Serial.println("Too many unexpected data from bms");
       boxFlags.bmsReadFailed = true;
       _bmsReadInProgress = false;
       //lastReadFromBmsMillis = millis();
@@ -98,7 +98,7 @@ void bmsRead(uint32_t timeout_ms) {
     _bmsResponseIndex++;
     // Prevent buffer overflow
     if (_bmsResponseIndex >= RESPONSE_BUFFER_SIZE) {
-      Serial.println("Buffer overflow");
+      //Serial.println("Buffer overflow");
       boxFlags.bmsReadFailed = true;
       _bmsReadInProgress = false;
       return;
@@ -106,7 +106,7 @@ void bmsRead(uint32_t timeout_ms) {
   }
 
   if (_bmsReadInProgress && millis() - lastReadFromBmsMillis > timeout_ms) {
-    Serial.println("BMS Timeout");
+    //Serial.println("BMS Timeout");
     boxFlags.bmsReadFailed = true;
     _bmsReadInProgress = false;
   } else delay(1);
@@ -169,6 +169,7 @@ int16_t _bmsConvertCurrent(uint8_t version, uint16_t rawCurrent) {
   }
 }
 
+/*
 void _parseBatteryWarningMessage(uint8_t highByte, uint8_t lowByte) {
   if (bitRead(lowByte, 0)) Serial.println("WARNING: Low capacity alarm");
   if (bitRead(lowByte, 1)) Serial.println("WARNING: MOS overtemperature alarm");
@@ -199,6 +200,7 @@ void _parseBatteryStatusInfo(uint8_t highByte, uint8_t lowByte) {
   else Serial.println("Battery is down dropped");
   //4-15 reserved
 }
+*/
 
 void parseResponse() {
   if (boxFlags.bmsReadFailed) return;
@@ -482,13 +484,13 @@ void parseResponse() {
     } else if (id == 0xd0) {  //unknown
       i += 2;
     } else {
-      Serial.print("=======UNKNOWN IDENTIFIER: ");
-      for (uint16_t j = i; j < _bmsResponseIndex; j++) {
-        if (bmsResponseFrameBuffer[j] < 16) Serial.print("0");
-        Serial.print(bmsResponseFrameBuffer[j], HEX);
-        Serial.print(" ");
-      }
-      Serial.println();
+      //Serial.print("=======UNKNOWN IDENTIFIER: ");
+      //for (uint16_t j = i; j < _bmsResponseIndex; j++) {
+      //  if (bmsResponseFrameBuffer[j] < 16) Serial.print("0");
+      //  //Serial.print(bmsResponseFrameBuffer[j], HEX);
+      //  Serial.print(" ");
+      //}
+      //Serial.println();
       break;
     }
   }
@@ -512,20 +514,21 @@ void parseResponse() {
 
 void bmsPrintRawResponse() {
   if (boxFlags.bmsReadFailed && _bmsResponseIndex == 0) {
-    Serial.println("Read from BMS Timeout");
+    //Serial.println("Read from BMS Timeout");
     return;
   }
-  if (boxFlags.bmsReadFailed || _bmsReadInProgress) Serial.print("Failed or Partial ");
-  Serial.print("Response from BMS[");
-  Serial.print(_bmsResponseIndex);
-  Serial.print("]: ");
-  for (uint16_t i = 0; i < _bmsResponseIndex; i++) {
-    if (bmsResponseFrameBuffer[i] < 16) Serial.print("0");
-    Serial.print(bmsResponseFrameBuffer[i], HEX);
-    Serial.print(" ");
-  }
-  Serial.println();
+  //if (boxFlags.bmsReadFailed || _bmsReadInProgress) Serial.print("Failed or Partial ");
+  //Serial.print("Response from BMS[");
+  //Serial.print(_bmsResponseIndex);
+  //Serial.print("]: ");
+  //for (uint16_t i = 0; i < _bmsResponseIndex; i++) {
+  //  if (bmsResponseFrameBuffer[i] < 16) Serial.print("0");
+  //  Serial.print(bmsResponseFrameBuffer[i], HEX);
+  //  Serial.print(" ");
+  //}
+  //Serial.println();
 }
+/*
 
 void appendCellInfo(String &result, uint8_t i) {
   result += (i + 1);
@@ -536,6 +539,7 @@ void appendCellInfo(String &result, uint8_t i) {
   else if (bmsData.cellVoltages[i] % 1000 < 100) result += "0";
   result += bmsData.cellVoltages[i] % 1000;
 }
+
 
 String bmsSimpleStatus() {
   String result;
@@ -554,8 +558,8 @@ String bmsSimpleStatus() {
   result += "\n\r";
 
   uint8_t rows = (bmsData.numCells + 1) / 2;
-  Serial.print("rows");
-  Serial.println(rows);
+  //Serial.print("rows");
+  //Serial.println(rows);
   for (uint8_t i = 0; i < rows; i++) {
     appendCellInfo(result, i);
     result += " ";
@@ -609,10 +613,12 @@ String bmsSimpleStatus() {
 
 
 
-  Serial.print("=========== result.length() ==");
-  Serial.println(result.length());
+  //Serial.print("=========== result.length() ==");
+  //Serial.println(result.length());
   return result;
 }
+
+*/
 
 /*
 

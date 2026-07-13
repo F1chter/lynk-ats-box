@@ -34,8 +34,8 @@ void _updateHomeScreen() {
   }
 
   if (boxFlags.wifiStatusUpdated) drawWifiStatus();
-  if (boxFlags.solarPanelInfoUpdated) drawPanelInfo();
-  if (boxFlags.battInfoUpdated) drawBatInfo();
+  if (boxFlags.solarPanelInfoUpdated) drawSolarPanelInfo();
+  if (boxFlags.battInfoUpdated) drawBatInfo(true);
 
   if (boxFlags.boxModeUpdated) {
     drawForceChangeMode();

@@ -32,10 +32,10 @@ void jsyBegin() {
 }
 
 void tickJsy(uint32_t timeout_ms = 1000L) {
-  if (!_jsyReadInProgress && millis() - _jsyStartMillis < JSY_READ_INTERVAL) return;
+  if (!_jsyReadInProgress && now - _jsyStartMillis < JSY_READ_INTERVAL) return;
   _readJsy();
   if (!_jsyReadInProgress) {
-    _jsyStartMillis = millis();
+    _jsyStartMillis = now;
     if (!boxFlags.jsyReadFailed) _parseJsyResponse();
   }
 }
@@ -48,7 +48,7 @@ void _readJsy() {
   if (!_jsyReadInProgress) {
     Serial.println("JSY start _readJsy");
     _jsyReadInProgress = true;
-    _jsyStartMillis = millis();
+    _jsyStartMillis = now;
     _jsyResponseIndex = 0;
     //read previous response
     while (jsySerial.available() && millis() - _jsyStartMillis < JSY_READ_TIMEOUT) Serial.print(jsySerial.read(), HEX);
@@ -118,6 +118,19 @@ void _readJsy() {
   } else delay(1);
 }
 
+void _increaseStatInfo() {
+  if(statInfo.prevOutputMetering == 0) {
+    statInfo.prevOutputMetering = jsyData.energyRaw;
+    return;
+  }
+  uint32_t delta = jsyData.energyRaw - statInfo.prevOutputMetering;
+  delta = delta >> 5;
+  if (boxMode == TO_GRID || boxMode == INV || boxMode == INV_PLUS) statInfo.invOutputMetering += delta;
+  else statInfo.gridOutputMetering += delta;
+  delta = delta << 5;
+  statInfo.prevOutputMetering += delta;
+}
+
 void _parseJsyResponse() {
   uint16_t word = (jsyResponseFrameBuffer[3] << 8) | jsyResponseFrameBuffer[4];
   Serial.println("_parseJsyResponse");
@@ -132,7 +145,6 @@ void _parseJsyResponse() {
   word = (jsyResponseFrameBuffer[5] << 8) | jsyResponseFrameBuffer[6];
   if (jsyData.current != word) {
     jsyData.current = word;
-    //boxFlags.outputInfoUpdated = true;
     boxFlags.outputInfoScreenNeedToRedraw = true;
   }
   Serial.print("V Current: ");
@@ -150,14 +162,15 @@ void _parseJsyResponse() {
   uint32_t dword = (jsyResponseFrameBuffer[9] << 24) | (jsyResponseFrameBuffer[10] << 16) | (jsyResponseFrameBuffer[11] << 8) | jsyResponseFrameBuffer[12];
   if (jsyData.energyRaw != dword) {
     jsyData.energyRaw = dword;
-    jsyData.energyDeka = dword >>5;
+    jsyData.energyDeka = dword >> 5;
     //boxFlags.outputInfoUpdated = true;
     boxFlags.outputInfoScreenNeedToRedraw = true;
+    _increaseStatInfo();
   }
   Serial.print("W Energy Raw: ");
   Serial.print(jsyData.energyRaw);
-  Serial.print("/3200KWh Energy *0.01: ");
-  Serial.print(jsyData.energyRaw);
+  Serial.print("/3200KWh Energy: ");
+  Serial.print(jsyData.energyDeka);
 
   word = (jsyResponseFrameBuffer[13] << 8) | jsyResponseFrameBuffer[14];
   if (jsyData.pf != word) {
@@ -165,7 +178,7 @@ void _parseJsyResponse() {
     //boxFlags.outputInfoUpdated = true;
     boxFlags.outputInfoScreenNeedToRedraw = true;
   }
-  Serial.print("KWh PowerFactor: ");
+  Serial.print("/100 KWh PowerFactor: ");
   Serial.print(jsyData.pf);
 
   jsyData.co2 = (jsyResponseFrameBuffer[15] << 24) | (jsyResponseFrameBuffer[16] << 16) | (jsyResponseFrameBuffer[17] << 8) | jsyResponseFrameBuffer[18];
@@ -179,7 +192,6 @@ void _parseJsyResponse() {
   word = (jsyResponseFrameBuffer[21] << 8) | jsyResponseFrameBuffer[22];
   if (jsyData.freq != word) {
     jsyData.freq = word;
-    //boxFlags.outputInfoUpdated = true;
     boxFlags.outputInfoScreenNeedToRedraw = true;
   }
   Serial.print(" Frequency: ");
