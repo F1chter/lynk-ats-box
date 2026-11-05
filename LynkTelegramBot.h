@@ -29,6 +29,7 @@ int _otaErrorCode = 0;
 String _otaInitiatorId;
 
 String (*_statusFunction)() = nullptr;
+String (*_logFunction)() = nullptr;
 
 struct TgMessage {
   String userId;
@@ -86,7 +87,7 @@ void tickTelegram() {
   }
   if (wifi && needToSendHello) {
     needToSendHello = false;
-    sendMessage("Controller Connected🔗(v1.0)\n🫳Force change to:", ADMIN_ID, true);
+    sendMessage("Controller Connected🔗(v1.1)\n🫳Force change to:", ADMIN_ID, true);
     //Serial.println("Send hello...");
   }
   if (wifi) {
@@ -122,8 +123,16 @@ void handleUpdate() {
     sendMessage(s, ADMIN_ID);
     return;
   }
-  if (tgMessage.text == "status" && _statusFunction != nullptr) {
+  if (tgMessage.text == "togrid") {
+    forceChangeMode = 1;
+  } else if (tgMessage.text == "toinv") {
+    forceChangeMode = 2;
+  } else if (tgMessage.text == "toplus") {
+    forceChangeMode = 3;
+  } else if (tgMessage.text == "status" && _statusFunction != nullptr) {
     sendMessage(_statusFunction(), tgMessage.chatId);
+  } else if (tgMessage.text == "log" && _logFunction != nullptr) {
+    sendMessage(_logFunction(), tgMessage.chatId);
   } else if (tgMessage.text == "resetstat1234") {
     boxFlags.isNeedToResetJsy = true;
     boxFlags.isNeedToResetStatInNVS = true;
@@ -136,6 +145,10 @@ void handleUpdate() {
 
 void attachStatusFunction(String (*handler)()) {
   _statusFunction = handler;
+}
+
+void attachLogFunction(String (*handler)()) {
+  _logFunction = handler;
 }
 
 void _addInlineMenuHeader(String&);
@@ -152,6 +165,8 @@ void _addMenu(String& req) {
   _addInlineMenuItem(req, "❄+🏠 INV+ ", "toplus");
   _addInlineMenuNewLine(req);
   _addInlineMenuItem(req, "Status", "status");
+  req += ',';
+  _addInlineMenuItem(req, "Log", "log");
   _addInlineMenuFooter(req);
 }
 
@@ -707,8 +722,8 @@ void _enableWiFi() {
   WiFi.disconnect(false);  // Reconnect the network
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(HOSTNAME);
-  WiFi.begin();
-  //WiFi.begin(WIFI_SSID, WIFI_PASS);
+  //WiFi.begin();
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
 }
 
 /* RESPONSE JSON PARSE HELPER FUNCTIONS*/

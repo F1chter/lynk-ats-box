@@ -1,6 +1,7 @@
+#include "crc16.h"
 #define READ_FROM_BMS_INTERVAL 1000
 #define RESPONSE_BUFFER_SIZE 350
-#define CURRENT_FILTER_SIZE 5  // Must be an odd number (3, 5, 7, etc.)
+#define CURRENT_FILTER_SIZE 7  // Must be an odd number (3, 5, 7, etc.)
 #define bmsSerial Serial2      //Serial0 esp32c3 Serial2 esp32
 #define BMS_RX_PIN 16          //ESP RX -> BMS TX pin GREEN(near VCC on BMS)
 #define BMS_TX_PIN 17          //ESP TX -> BMS RX pin YELLOW(near GND on BMS)
@@ -30,9 +31,10 @@ String bmsSimpleStatus();
 
 void bmsBegin() {
   //pinMode(BMS_TX_PIN, OUTPUT);
-  //pinMode(BMS_RX_PIN, INPUT_PULLUP);
-  memset(_currentHistory, 0, CURRENT_FILTER_SIZE);
+  pinMode(BMS_RX_PIN, INPUT_PULLUP);
+  memset(_currentHistory, 0, sizeof(_currentHistory));
   bmsSerial.begin(115200, SERIAL_8N1, BMS_RX_PIN, BMS_TX_PIN);
+  bmsSerial.setRxBufferSize(512);
   bmsRead();
   bmsPrintRawResponse();
   if (!_bmsReadInProgress && !boxFlags.bmsReadFailed) {
@@ -46,7 +48,16 @@ void tickBms() {
   bmsRead();
   if (!_bmsReadInProgress) {
     lastReadFromBmsMillis = millis();
-    if (!boxFlags.bmsReadFailed) parseResponse();
+    bmsData.readCount++;
+    if (bmsData.readCount == 255) {
+      bmsData.readCount = 0;
+      bmsData.failCountOld = bmsData.failCountNew;
+      bmsData.failCountNew = 0;
+    }
+    if (!boxFlags.bmsReadFailed) {
+      bmsData.failCountNew++;
+      parseResponse();
+    }
   }
 }
 
@@ -55,16 +66,16 @@ void bmsRead(uint32_t timeout_ms) {
     _bmsReadInProgress = true;
     lastReadFromBmsMillis = millis();
     _bmsResponseIndex = 0;
-    //readFailed = false;
-    while (bmsSerial.available() && millis() - lastReadFromBmsMillis < timeout_ms) Serial.write(bmsSerial.read());
+    while (bmsSerial.available() && millis() - lastReadFromBmsMillis < timeout_ms) bmsSerial.read();
     if (bmsSerial.available()) {
       //Serial.println("Too many unexpected data from bms");
       boxFlags.bmsReadFailed = true;
       _bmsReadInProgress = false;
-      //lastReadFromBmsMillis = millis();
       return;
     }
     bmsSerial.write(bmsRequestFrame, sizeof(bmsRequestFrame));
+    bmsSerial.flush();
+    lastReadFromBmsMillis = millis();
     _bmsExpectedLength = 0;
   }
 
@@ -80,17 +91,28 @@ void bmsRead(uint32_t timeout_ms) {
         return;
       }
     } else if (_bmsResponseIndex == 3) {
-      _bmsExpectedLength = (bmsResponseFrameBuffer[2] << 8) | bmsResponseFrameBuffer[3];
-      //TODO validate nonzero
-    } else if (_bmsExpectedLength != 0 && _bmsResponseIndex == _bmsExpectedLength - 3) {
+      _bmsExpectedLength = (bmsResponseFrameBuffer[2] << 8) | bmsResponseFrameBuffer[3] + 2;  // +2, cause include two start bytes
+      if (_bmsExpectedLength < 11 || _bmsExpectedLength >= RESPONSE_BUFFER_SIZE) {
+        boxFlags.bmsReadFailed = true;
+        _bmsReadInProgress = false;
+        return;
+      }
+    } else if (_bmsExpectedLength != 0 && _bmsResponseIndex == _bmsExpectedLength - 5) {
       if (bmsResponseFrameBuffer[_bmsResponseIndex] != 0x68) {
         boxFlags.bmsReadFailed = true;
         _bmsReadInProgress = false;
         return;
       }
-    } else if (_bmsExpectedLength != 0 && _bmsResponseIndex == _bmsExpectedLength + 1) {
+    } else if (_bmsExpectedLength != 0 && _bmsResponseIndex == _bmsExpectedLength - 1) {
       //TODO crc check;
-      boxFlags.bmsReadFailed = false;
+      if (_bmsResponseIndex > 3) _end = bmsResponseFrameBuffer[_bmsResponseIndex - 4];
+      _crcWord = (bmsResponseFrameBuffer[_bmsResponseIndex - 1] << 8) | bmsResponseFrameBuffer[_bmsResponseIndex];
+      _calcCrc = getCrc16Sum(bmsResponseFrameBuffer, _bmsResponseIndex - 3);
+      if (_crcWord == _calcCrc) {
+        boxFlags.bmsReadFailed = false;
+      } else {
+        boxFlags.bmsReadFailed = true;
+      }
       _bmsReadInProgress = false;
       lastReadFromBmsMillis = millis();
       return;
@@ -478,6 +500,7 @@ void parseResponse() {
       i += 3;
     } else if (id == 0xc0) {  //Agreement version number
       version = bmsResponseFrameBuffer[i + 1];
+      bmsData.protocolVersion = version;
       i += 2;
     } else if (id == 0xce) {  //unknown
       i += 2;
@@ -624,7 +647,7 @@ String bmsSimpleStatus() {
 
 Response example:
 4E 57 - header
-01 07 - length
+01 07 - length (263)
 00 00 00 00 - BMS ID
 06 - command
 00 - frame source
@@ -636,7 +659,7 @@ Response example:
 03 08 93 
 04 08 93 
 05 08 84 
-06 08 93 
+06 08 93 ==30
 80 - Identifier(Readpowertube temperature)
 00 1F
 81 00 1A 
@@ -647,7 +670,7 @@ Response example:
 86 02
 87 00 00 
 89 00 00 00 00 
-8A 00 06 
+8A 00 06 ==60 
 8B 00 00 
 8C 00 07 
 8E 06 54 

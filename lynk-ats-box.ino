@@ -19,7 +19,7 @@
 #define SSR_REL_PIN 27               //GREEN
 #define SAVE_AFTER_LAST_DELAY 30000  //30s
 #define LOW_VOLTAGE 19000 //190v
-#define PREHEAT_TIME 5000 //5s
+#define PREHEAT_TIME 10000 //10s
 #define DELAY_BETWEEN_MODE_CHANGE 5000 //5s, to avoid dribling
 
 
@@ -68,7 +68,7 @@ void setup() {
   drawHomeScreen();
   telegramBegin();
   attachStatusFunction(getCurrentBoxStatus);
-  
+  attachLogFunction(getLogInfo);
   lastStatMillis = now;
   lastModeChangeMillis = now;
   lastConfigChangesMillis = now;
@@ -192,6 +192,7 @@ void emulateMeter() {
 */
 
 
+
 //0-NO_FORCE, 1-TO_GRID, 2-TO_INV, 3-TO_INV_PLUS
 void tickBoxMode() {
   if (boxMode == TO_GRID && now - lastModeChangeMillis > DELAY_BETWEEN_MODE_CHANGE) {
@@ -202,6 +203,7 @@ void tickBoxMode() {
   } else if (forceChangeMode != 1 && boxMode == GRID && now - lastModeChangeMillis > DELAY_BETWEEN_MODE_CHANGE) {
     if (forceChangeMode == 2 || forceChangeMode == 3 || bmsData.soc >= config.toInvSoc || (bmsData.soc > config.toGridSoc && solarPanelPower >= (((uint16_t)config.toInvSolarPanelPower) * 10))) {
       debugSendToAdmin(INV_PREHEAT);
+      lastToInvSoc = bmsData.soc;
       boxMode = INV_PREHEAT;
       boxFlags.boxModeUpdated = true;
       digitalWrite(INV_PIN, HIGH);
@@ -251,10 +253,14 @@ void tickBoxMode() {
 }
 
 void debugSendToAdmin(uint8_t newMode) {
-  String s = "DEBUG from ";
-  s += (uint8_t)boxMode;
+  String s;
+  s.reserve(128);
+  s += "DEBUG from ";
+  s += boxModeStrings4c[(uint8_t)boxMode];
   s += " to ";
-  s += newMode;
+  s += boxModeStrings4c[newMode];
+  s += " totalVoltage = ";
+  s += bmsData.totalVoltage;
   s += " soc = ";
   s += bmsData.soc;
   s += " crit = ";
@@ -263,6 +269,10 @@ void debugSendToAdmin(uint8_t newMode) {
   s += config.toGridSoc;
   s += " toInvSoc = ";
   s += config.toInvSoc;
+  s += " force = ";
+  s += forceChangeMode;
+  s += " l=";
+  s += s.length();
   sendMessage(s, ADMIN_ID);
 }
 

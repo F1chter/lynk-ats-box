@@ -963,12 +963,12 @@ struct SettingsItemDef {
 const SettingsItemDef SETTINGS_DEFS[] = {
   // label              config field                           fast  getMin        getMax        formatter
   { F("ToInvSPanel"), &config.toInvSolarPanelPower, 5, minFixed0, maxFixed255, fmtWattx10ZeroIsOff },       // 0
-  { F("To Inv   Soc"), &config.toInvSoc, 5, minToInvSoc, maxToInvSoc, fmtPct },                             // 1
-  { F("To Grid  Soc"), &config.toGridSoc, 5, minToGridSoc, maxToGridSoc, fmtPct },                          // 2
-  { F("Critical Soc"), &config.toGridSocCritical, 5, minToGridSocCritical, maxToGridSocCritical, fmtPct },  // 3
+  { F("To Inv   SOC"), &config.toInvSoc, 5, minToInvSoc, maxToInvSoc, fmtPct },                             // 1
+  { F("To Grid  SOC"), &config.toGridSoc, 5, minToGridSoc, maxToGridSoc, fmtPct },                          // 2
+  { F("Critical SOC"), &config.toGridSocCritical, 5, minToGridSocCritical, maxToGridSocCritical, fmtPct },  // 3
   { F("KeepInvIf >"), &config.outputThreshold, 5, minFixed0, maxFixed255, fmtWattx10 },                     // 4  (note: display is *10)
-  { F("To Sleep Soc"), &config.goToSleepSoc, 5, minGoToSleepSoc, maxGoToSleepSoc, fmtPct },                 // 5
-  { F("Wake  Up Soc"), &config.wakeUpSoc, 5, minWakeUpSoc, maxWakeUpSoc, fmtPct },                          // 6
+  { F("To Sleep SOC"), &config.goToSleepSoc, 5, minGoToSleepSoc, maxGoToSleepSoc, fmtPct },                 // 5
+  { F("Wake  Up SOC"), &config.wakeUpSoc, 5, minWakeUpSoc, maxWakeUpSoc, fmtPct },                          // 6
   { F("Tg send hello"), &config.needToSendHelloAfterReconnect, 1, minFixed0, maxFixed1, fmtBool },          // 7
   { F("Show bat temp"), &config.showTemperature, 3, minFixed0, maxFixed6, fmtBatTemp },                     // 8
   { F("InverterIdle"), &config.invIdle, 5, minFixed0, maxFixed255, fmtWatt },                               // 9

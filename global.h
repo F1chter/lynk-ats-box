@@ -1,26 +1,5 @@
 /* =========== ENUMS & CONSTANTS ===========*/
 
-
-// CRC16 Table
-static constexpr uint16_t CRCTable[] = {
-  0x0000, 0xC0C1, 0xC181, 0x0140, 0xC301, 0x03C0, 0x0280, 0xC241, 0xC601, 0x06C0, 0x0780, 0xC741, 0x0500, 0xC5C1, 0xC481, 0x0440,
-  0xCC01, 0x0CC0, 0x0D80, 0xCD41, 0x0F00, 0xCFC1, 0xCE81, 0x0E40, 0x0A00, 0xCAC1, 0xCB81, 0x0B40, 0xC901, 0x09C0, 0x0880, 0xC841,
-  0xD801, 0x18C0, 0x1980, 0xD941, 0x1B00, 0xDBC1, 0xDA81, 0x1A40, 0x1E00, 0xDEC1, 0xDF81, 0x1F40, 0xDD01, 0x1DC0, 0x1C80, 0xDC41,
-  0x1400, 0xD4C1, 0xD581, 0x1540, 0xD701, 0x17C0, 0x1680, 0xD641, 0xD201, 0x12C0, 0x1380, 0xD341, 0x1100, 0xD1C1, 0xD081, 0x1040,
-  0xF001, 0x30C0, 0x3180, 0xF141, 0x3300, 0xF3C1, 0xF281, 0x3240, 0x3600, 0xF6C1, 0xF781, 0x3740, 0xF501, 0x35C0, 0x3480, 0xF441,
-  0x3C00, 0xFCC1, 0xFD81, 0x3D40, 0xFF01, 0x3FC0, 0x3E80, 0xFE41, 0xFA01, 0x3AC0, 0x3B80, 0xFB41, 0x3900, 0xF9C1, 0xF881, 0x3840,
-  0x2800, 0xE8C1, 0xE981, 0x2940, 0xEB01, 0x2BC0, 0x2A80, 0xEA41, 0xEE01, 0x2EC0, 0x2F80, 0xEF41, 0x2D00, 0xEDC1, 0xEC81, 0x2C40,
-  0xE401, 0x24C0, 0x2580, 0xE541, 0x2700, 0xE7C1, 0xE681, 0x2640, 0x2200, 0xE2C1, 0xE381, 0x2340, 0xE101, 0x21C0, 0x2080, 0xE041,
-  0xA001, 0x60C0, 0x6180, 0xA141, 0x6300, 0xA3C1, 0xA281, 0x6240, 0x6600, 0xA6C1, 0xA781, 0x6740, 0xA501, 0x65C0, 0x6480, 0xA441,
-  0x6C00, 0xACC1, 0xAD81, 0x6D40, 0xAF01, 0x6FC0, 0x6E80, 0xAE41, 0xAA01, 0x6AC0, 0x6B80, 0xAB41, 0x6900, 0xA9C1, 0xA881, 0x6840,
-  0x7800, 0xB8C1, 0xB981, 0x7940, 0xBB01, 0x7BC0, 0x7A80, 0xBA41, 0xBE01, 0x7EC0, 0x7F80, 0xBF41, 0x7D00, 0xBDC1, 0xBC81, 0x7C40,
-  0xB401, 0x74C0, 0x7580, 0xB541, 0x7700, 0xB7C1, 0xB681, 0x7640, 0x7200, 0xB2C1, 0xB381, 0x7340, 0xB101, 0x71C0, 0x7080, 0xB041,
-  0x5000, 0x90C1, 0x9181, 0x5140, 0x9301, 0x53C0, 0x5280, 0x9241, 0x9601, 0x56C0, 0x5780, 0x9741, 0x5500, 0x95C1, 0x9481, 0x5440,
-  0x9C01, 0x5CC0, 0x5D80, 0x9D41, 0x5F00, 0x9FC1, 0x9E81, 0x5E40, 0x5A00, 0x9AC1, 0x9B81, 0x5B40, 0x9901, 0x59C0, 0x5880, 0x9841,
-  0x8801, 0x48C0, 0x4980, 0x8941, 0x4B00, 0x8BC1, 0x8A81, 0x4A40, 0x4E00, 0x8EC1, 0x8F81, 0x4F40, 0x8D01, 0x4DC0, 0x4C80, 0x8C41,
-  0x4400, 0x84C1, 0x8581, 0x4540, 0x8701, 0x47C0, 0x4680, 0x8641, 0x8201, 0x42C0, 0x4380, 0x8341, 0x4100, 0x81C1, 0x8081, 0x4040
-};
-
 //const char* hostname = "esp32-node-temperature";
 #define BMS_MAX_CELLS 8
 #define N10K 10000
@@ -103,10 +82,10 @@ struct BoxFlagsStruct {
 uint16_t solarPanelPower = 0;
 
 inline void setSolarPower(int16_t value) {
-    if (solarPanelPower != value) {
-        solarPanelPower = value;
-        boxFlags.solarPanelInfoUpdated = true;
-    }
+  if (solarPanelPower != value) {
+    solarPanelPower = value;
+    boxFlags.solarPanelInfoUpdated = true;
+  }
 }
 
 BoxMode boxMode = UNKNOWN;
@@ -127,7 +106,15 @@ struct BMSDataStruct {
   uint8_t statusInfo = 0;  //1-bit CHARGE MOS, 2-bit DISCHARGE MOS, 3=bit BALANCE
   uint16_t cycles = 0;
   uint8_t version = 0;
+  uint8_t protocolVersion = 0;
+  uint8_t readCount = 0;
+  uint8_t failCountOld = 0;
+  uint8_t failCountNew = 0;
 } bmsData;
+
+uint8_t _end = 0;
+uint16_t _crcWord = 0;
+uint16_t _calcCrc = 0;
 
 struct JSYDataStruct {
   uint16_t voltage = 0;    // *0.01 V
@@ -168,15 +155,18 @@ struct StatInfoStruct {
 
 
 uint8_t forceChangeMode = 0;  //0-NO_FORCE, 1-TO_GRID, 2-TO_INV, 3-TO_INV_PLUS
+uint8_t lastToInvSoc = 0;     //store soc of changing to inv mode
 
 /* =========== LOG VARIABLES ===========*/
 #define LOG_SIZE 8
 uint32_t modeChangeLogMillis[LOG_SIZE] = { 0 };
 BoxMode modeChangeLogMode[LOG_SIZE] = { UNKNOWN };
+uint8_t modeChangeLogBmsStatus[LOG_SIZE] = { 0 };
+uint8_t modeChangeLogBmsSoc[LOG_SIZE] = { 0 };
 uint8_t lastChangeIndex = LOG_SIZE - 1;
 
 /* =========== MILLIS VARIABLES ===========*/
-uint32_t now; //call millis() one per loop, Every call millis(), the Arduino has to disable interrupts, copy a 4-byte volatile variable from memory, and re-enable interrupts.
+uint32_t now;  //call millis() one per loop, Every call millis(), the Arduino has to disable interrupts, copy a 4-byte volatile variable from memory, and re-enable interrupts.
 uint32_t lastStatMillis;
 uint32_t lastModeChangeMillis;
 uint32_t lastConfigChangesMillis;
@@ -211,14 +201,16 @@ int8_t getBmsTemperature() {
   }
 }
 
-inline void logModeChange(){
+inline void logModeChange() {
   if (lastChangeIndex < LOG_SIZE - 1) lastChangeIndex++;
-    else lastChangeIndex = 0;
-    modeChangeLogMillis[lastChangeIndex] = now;
-    modeChangeLogMode[lastChangeIndex] = boxMode;
+  else lastChangeIndex = 0;
+  modeChangeLogMillis[lastChangeIndex] = now;
+  modeChangeLogMode[lastChangeIndex] = boxMode;
+  modeChangeLogBmsStatus[lastChangeIndex] = bmsData.statusInfo;
+  modeChangeLogBmsSoc[lastChangeIndex] = bmsData.soc;
 }
 
-void _appendCellInfo(String &result, uint8_t i) {
+void _appendCellInfo(String& result, uint8_t i) {
   result += (i + 1);
   result += ": ";
   result += bmsData.cellVoltages[i] / 1000;
@@ -230,10 +222,12 @@ void _appendCellInfo(String &result, uint8_t i) {
 
 String getCurrentBoxStatus() {
   String result;
-  //result.reserve();
-  result += "Status: ";                                      //8
+  result.reserve(256);
+  result += "Mode: ";
+  result += boxModeStrings4c[(uint8_t)boxMode];
+  result += "\n\rStatus: ";                                  //8
   result += boxFlags.bmsReadFailed ? "Fail\n\r" : "OK\n\r";  //4
-  if (boxFlags.bmsReadFailed) return result;
+  //if (boxFlags.bmsReadFailed) return result;
 
   result += bmsData.soc;
   result += "% ";  //5
@@ -261,8 +255,9 @@ String getCurrentBoxStatus() {
   if (diff % 1000 < 10) result += "00";
   else if (diff % 1000 < 100) result += "0";
   result += diff % 1000;
+  result += "\n\rRaw current:";
+  result += bmsData.rawCurrent;
   result += "\n\r";
-
 
   if (bmsData.current > 0) {
     result += "Charge: ";
@@ -281,28 +276,55 @@ String getCurrentBoxStatus() {
   } else {
     result += "Zero current\n\r";
   }
-  if (bitRead(bmsData.alarmStatus, 0)) result += "WARNING: Low capacity alarm";
-  if (bitRead(bmsData.alarmStatus, 1)) result += "WARNING: MOS overtemperature alarm";
-  if (bitRead(bmsData.alarmStatus, 2)) result += "WARNING: Charge overvoltage alarm";
-  if (bitRead(bmsData.alarmStatus, 3)) result += "WARNING: Discharge overvoltage alarm";
-  if (bitRead(bmsData.alarmStatus, 4)) result += "WARNING: Temp1 overtemperature alarm";
-  if (bitRead(bmsData.alarmStatus, 5)) result += "WARNING: Charge overcurrent alarm";
-  if (bitRead(bmsData.alarmStatus, 6)) result += "WARNING: Discharge overcurrent alarm";
-  if (bitRead(bmsData.alarmStatus, 7)) result += "WARNING: Differential pressure alarm";
-  if (bitRead(bmsData.alarmStatus, 8)) result += "WARNING: Temp2 overtemperature alarm";
-  if (bitRead(bmsData.alarmStatus, 9)) result += "WARNING: Battery low temperature alarm";
-  if (bitRead(bmsData.alarmStatus, 10)) result += "WARNING: Unit overvoltage alarm";
-  if (bitRead(bmsData.alarmStatus, 11)) result += "WARNING: Unitundervoltage alarm";
-  if (bitRead(bmsData.alarmStatus, 12)) result += "WARNING: 309_A protection";
-  if (bitRead(bmsData.alarmStatus, 13)) result += "WARNING: 309_B protection";
-  if (bitRead(bmsData.alarmStatus, 14)) result += "WARNING: Unknown1(reserved) alarm";
-  if (bitRead(bmsData.alarmStatus, 15)) result += "WARNING: Unknown2(reserved) alarm";
-
-
-
+  if (bitRead(bmsData.alarmStatus, 0)) result += "WARNING: Low capacity alarm\n\r";
+  if (bitRead(bmsData.alarmStatus, 1)) result += "WARNING: MOS overtemperature alarm\n\r";
+  if (bitRead(bmsData.alarmStatus, 2)) result += "WARNING: Charge overvoltage alarm\n\r";
+  if (bitRead(bmsData.alarmStatus, 3)) result += "WARNING: Discharge overvoltage alarm\n\r";
+  if (bitRead(bmsData.alarmStatus, 4)) result += "WARNING: Temp1 overtemperature alarm\n\r";
+  if (bitRead(bmsData.alarmStatus, 5)) result += "WARNING: Charge overcurrent alarm\n\r";
+  if (bitRead(bmsData.alarmStatus, 6)) result += "WARNING: Discharge overcurrent alarm\n\r";
+  if (bitRead(bmsData.alarmStatus, 7)) result += "WARNING: Differential pressure alarm\n\r";
+  if (bitRead(bmsData.alarmStatus, 8)) result += "WARNING: Temp2 overtemperature alarm\n\r";
+  if (bitRead(bmsData.alarmStatus, 9)) result += "WARNING: Battery low temperature alarm\n\r";
+  if (bitRead(bmsData.alarmStatus, 10)) result += "WARNING: Unit overvoltage alarm\n\r";
+  if (bitRead(bmsData.alarmStatus, 11)) result += "WARNING: Unitundervoltage alarm\n\r";
+  if (bitRead(bmsData.alarmStatus, 12)) result += "WARNING: 309_A protection\n\r";
+  if (bitRead(bmsData.alarmStatus, 13)) result += "WARNING: 309_B protection\n\r";
+  if (bitRead(bmsData.alarmStatus, 14)) result += "WARNING: Unknown1(reserved) alarm\n\r";
+  if (bitRead(bmsData.alarmStatus, 15)) result += "WARNING: Unknown2(reserved) alarm\n\r";
+  result += "lastToInvSoc";
+  result += lastToInvSoc;
+  result += "\n\rend:";
+  result += _end;
+  result += "\n\rcrc: ";
+  result += _crcWord;
+  result += " == ";
+  result += _calcCrc;
+  result += "\n\rfailRate:";
+  result += bmsData.failCountNew;
+  result += "(";
+  result += bmsData.failCountOld;
+  result += ")/";
+  result += bmsData.readCount;
+  result += "\n\rl=";
+  result += result.length();
   //Serial.print("=========== result.length() ==");
   //Serial.println(result.length());
   return result;
 }
 
-
+String getLogInfo() {
+  String result;
+  result.reserve(256);
+  for (uint8_t i = lastChangeIndex + LOG_SIZE; i > lastChangeIndex; i--) {
+    result += (now - modeChangeLogMillis[i % LOG_SIZE]) / 1000;
+    result += "s ago to ";
+    result += boxModeStrings4c[modeChangeLogMode[i % LOG_SIZE]];
+    result += " soc=";
+    result += modeChangeLogBmsSoc[i % LOG_SIZE];
+    result += " bmsStatus=";
+    result += modeChangeLogBmsStatus[i % LOG_SIZE];
+    result += "\n\r";
+  }
+  return result;
+}
